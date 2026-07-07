@@ -16,7 +16,7 @@ spec:
   source:
     repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
     targetRevision: main
-    path: config/cert-manager
+    path: platform-repo/config/cert-manager
   destination:
     server: https://kubernetes.default.svc
     namespace: ingress-nginx
