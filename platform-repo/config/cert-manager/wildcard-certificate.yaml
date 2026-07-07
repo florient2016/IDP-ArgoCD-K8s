@@ -1,0 +1,21 @@
+# Wildcard certificate for the platform apps domain.
+# One cert, reused by every Ingress via the ingress-nginx default cert —
+# same pattern as the *.apps wildcard on OpenShift routers.
+#
+# Start with letsencrypt-staging, verify it issues, then switch
+# issuerRef.name to letsencrypt-prod (staging certs are untrusted
+# but don't burn LE rate limits while you debug DNS).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-apps
+  namespace: ingress-nginx
+spec:
+  secretName: wildcard-apps-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: "*.apps.itssolutions.me"
+  dnsNames:
+    - "*.apps.itssolutions.me"
+    - "apps.itssolutions.me"

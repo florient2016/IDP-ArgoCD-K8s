@@ -1,0 +1,48 @@
+# cert-manager ClusterIssuers — Let's Encrypt with DNS-01
+#
+# DNS-01 is the right choice here: your MetalLB IPs (10.10.0.x) are private,
+# so HTTP-01 challenges from Let's Encrypt would never reach the cluster.
+# DNS-01 only requires cert-manager to create TXT records on itssolutions.me.
+#
+# This example assumes Cloudflare manages the itssolutions.me DNS zone.
+# If you use another provider (OVH, Gandi, Route53, ...), tell me and
+# I'll swap the solver — the rest stays identical.
+#
+# 1) Create a Cloudflare API token with Zone:DNS:Edit on itssolutions.me
+# 2) kubectl -n cert-manager create secret generic cloudflare-api-token \
+#      --from-literal=api-token='<YOUR_TOKEN>'
+# 3) Apply this file.
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ezakoffi71@gmail.com          # change if you prefer another contact
+    privateKeySecretRef:
+      name: letsencrypt-staging-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ezakoffi71@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token

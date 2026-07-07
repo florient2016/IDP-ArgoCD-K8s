@@ -1,0 +1,21 @@
+# MetalLB — L2 mode
+# Prereq: install MetalLB first (see README), then apply this.
+# IMPORTANT: make sure 10.10.0.240-10.10.0.250 is OUTSIDE your DHCP range
+# and not used by any Proxmox VM / node.
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 10.10.0.240-10.10.0.250
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-default
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - default-pool

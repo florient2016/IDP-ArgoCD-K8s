@@ -1,0 +1,29 @@
+# Argo CD — Helm values
+# TLS terminé par ingress-nginx (wildcard-apps-tls par défaut),
+# donc Argo CD tourne en mode insecure derrière l'ingress.
+global:
+  domain: argocd.apps.itssolutions.me
+
+configs:
+  params:
+    server.insecure: true          # nginx termine le TLS
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    tls: true                      # utilise le default-ssl-certificate (wildcard)
+
+controller:
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 1Gi}
+
+repoServer:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 512Mi}
+
+# Pas de HA sur 2 workers — un réplica de chaque composant suffit au lab
+redis-ha:
+  enabled: false

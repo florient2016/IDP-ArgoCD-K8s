@@ -1,0 +1,26 @@
+# Config MetalLB (IPAddressPool + L2Advertisement) — wave 1 :
+# les CRDs MetalLB doivent exister avant d'appliquer le pool.
+# >>> Remplace <TON_ORG> <<<
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metallb-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<TON_ORG>/platform.git
+    targetRevision: main
+    path: config/metallb
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: metallb-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}

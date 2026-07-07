@@ -1,0 +1,26 @@
+# Root Application (app-of-apps)
+# C'est le SEUL manifest appliqué à la main. Il surveille apps/
+# et déploie automatiquement toutes les Applications qui s'y trouvent.
+# >>> Remplace <TON_ORG> par ton organisation/compte GitHub <<<
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<TON_ORG>/platform.git
+    targetRevision: main
+    path: apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
