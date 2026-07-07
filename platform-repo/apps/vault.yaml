@@ -1,0 +1,68 @@
+# Vault — namespace dédié vault-itssolutions (demande explicite pour
+# éviter tout conflit avec d'anciennes installs dans "vault").
+# Mode standalone + stockage Raft intégré sur PVC Longhorn.
+# TLS terminé par ingress-nginx (wildcard) — Vault écoute en HTTP interne.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: 0.28.*
+    helm:
+      valuesObject:
+        global:
+          tlsDisable: true            # TLS géré par l'ingress (lab)
+        server:
+          standalone:
+            enabled: false
+          ha:
+            enabled: true
+            replicas: 1               # 1 seul noeud : Raft prêt à évoluer, sans HA réelle
+            raft:
+              enabled: true
+              config: |
+                ui = true
+                listener "tcp" {
+                  address = "[::]:8200"
+                  cluster_address = "[::]:8201"
+                  tls_disable = 1
+                }
+                storage "raft" {
+                  path = "/vault/data"
+                }
+                service_registration "kubernetes" {}
+          dataStorage:
+            enabled: true
+            size: 5Gi
+            storageClass: longhorn
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+          ingress:
+            enabled: true
+            ingressClassName: nginx
+            hosts:
+              - host: vault.apps.itssolutions.me
+            tls:
+              - hosts: [vault.apps.itssolutions.me]
+                secretName: wildcard-apps-tls
+        ui:
+          enabled: true
+        injector:
+          enabled: false              # on utilise ESO, pas l'agent injector
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-itssolutions
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
