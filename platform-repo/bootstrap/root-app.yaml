@@ -12,9 +12,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/<TON_ORG>/platform.git
-    targetRevision: main
-    path: apps
+    repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
+    targetRevision: master
+    path: platform-repo/apps
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
