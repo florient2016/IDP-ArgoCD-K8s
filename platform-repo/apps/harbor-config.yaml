@@ -1,0 +1,28 @@
+# Secrets Harbor via Vault/ESO — wave 5 : le secret harbor-admin doit
+# exister AVANT que le chart Harbor démarre (il le référence).
+# >>> Remplace <TON_ORG> <<<
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: harbor-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
+    targetRevision: master
+    path: platform-repo/config/harbor
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: harbor
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: -1
+      backoff: {duration: 30s, factor: 2, maxDuration: 5m}

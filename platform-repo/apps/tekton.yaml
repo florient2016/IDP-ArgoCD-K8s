@@ -1,0 +1,37 @@
+# Tekton Pipelines + Triggers + Dashboard — installés depuis les YAML
+# de release VENDORÉS dans le repo (config/tekton-install/).
+# Pourquoi vendorer plutôt qu'une URL distante : version épinglée,
+# auditable, reconstructible hors-ligne — GitOps propre.
+# Voir README §2 pour les curl de téléchargement des releases.
+# >>> Remplace <TON_ORG> <<<
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
+    targetRevision: master
+    path: platform-repo/config/tekton-install
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true       # CRDs Tekton volumineuses
+  ignoreDifferences:
+    # les webhooks Tekton s'auto-modifient (caBundle injecté au runtime)
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers: [/webhooks/0/clientConfig/caBundle]
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers: [/webhooks/0/clientConfig/caBundle]

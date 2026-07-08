@@ -1,0 +1,103 @@
+# Harbor — registre d'images interne
+# harbor.apps.itssolutions.me | mot de passe admin servi par Vault/ESO
+# (existingSecretAdminPassword -> ExternalSecret harbor-admin, voir config/harbor/)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: harbor
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.goharbor.io
+    chart: harbor
+    targetRevision: 1.16.*
+    helm:
+      valuesObject:
+        expose:
+          type: ingress
+          tls:
+            enabled: true
+            certSource: secret
+            secret:
+              secretName: wildcard-apps-tls
+          ingress:
+            hosts:
+              core: harbor.apps.itssolutions.me
+            className: nginx
+            annotations:
+              # les push d'images sont de gros uploads :
+              nginx.ingress.kubernetes.io/proxy-body-size: "0"
+        externalURL: https://harbor.apps.itssolutions.me
+
+        # Mot de passe admin depuis Vault via ESO — jamais dans Git
+        existingSecretAdminPassword: harbor-admin
+        existingSecretAdminPasswordKey: password
+
+        persistence:
+          enabled: true
+          persistentVolumeClaim:
+            registry:
+              storageClass: longhorn
+              size: 20Gi
+            database:
+              storageClass: longhorn
+              size: 5Gi
+            redis:
+              storageClass: longhorn
+              size: 1Gi
+            jobservice:
+              jobLog:
+                storageClass: longhorn
+                size: 1Gi
+            trivy:
+              storageClass: longhorn
+              size: 5Gi
+
+        # Trivy (scan de vulnérabilités) : très utile pour l'IDP mais +700Mo RAM.
+        # Désactivé au départ — passer à true quand le sizing le permet.
+        trivy:
+          enabled: false
+
+        # Composants dimensionnés lab
+        core:
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+        registry:
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+        jobservice:
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 256Mi}
+        portal:
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 256Mi}
+        database:
+          internal:
+            resources:
+              requests: {cpu: 100m, memory: 256Mi}
+              limits: {memory: 512Mi}
+        redis:
+          internal:
+            resources:
+              requests: {cpu: 50m, memory: 64Mi}
+              limits: {memory: 128Mi}
+
+        metrics:
+          enabled: true              # prêt pour Prometheus (Phase 5)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: harbor
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

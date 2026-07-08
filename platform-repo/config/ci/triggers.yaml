@@ -1,0 +1,117 @@
+# Déclenchement automatique : webhook GitHub -> EventListener -> PipelineRun.
+# Endpoint public : https://webhook-ci.apps.itssolutions.me
+# Prérequis : vault kv put secret/ci/github-webhook secret='<CHAINE_ALEATOIRE>'
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: github-webhook-secret
+  namespace: ci
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {name: vault, kind: ClusterSecretStore}
+  target: {name: github-webhook-secret, creationPolicy: Owner}
+  data:
+    - secretKey: secretToken
+      remoteRef: {key: ci/github-webhook, property: secret}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-triggers-sa
+  namespace: ci
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-triggers-sa-eventlistener
+  namespace: ci
+subjects: [{kind: ServiceAccount, name: tekton-triggers-sa, namespace: ci}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: tekton-triggers-eventlistener-roles}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-triggers-sa-eventlistener-cluster
+subjects: [{kind: ServiceAccount, name: tekton-triggers-sa, namespace: ci}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: tekton-triggers-eventlistener-clusterroles}
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: github-listener
+  namespace: ci
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: on-push-main
+      interceptors:
+        - ref: {name: gitea}
+          params:
+             - name: secretRef
+               value: {secretName: github-webhook-secret, secretKey: secretToken}
+             - name: eventTypes
+               value: ["push"]
+        - ref: {name: cel}
+          params:
+            - name: filter
+              value: body.ref == 'refs/heads/main'
+      bindings:
+        - {name: repo-url, value: $(body.repository.clone_url)}
+        - {name: repo-name, value: $(body.repository.name)}
+      template:
+        ref: build-and-promote-template
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: build-and-promote-template
+  namespace: ci
+spec:
+  params:
+    - name: repo-url
+    - name: repo-name
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: build-$(tt.params.repo-name)-
+        namespace: ci
+      spec:
+        pipelineRef: {name: build-and-promote}
+        params:
+          - {name: app-repo-url, value: $(tt.params.repo-url)}
+          - {name: image, value: "harbor.apps.itssolutions.me/apps/$(tt.params.repo-name)"}
+          # >>> Adapter : repo GitOps + chemin values de l'app <<<
+          - {name: gitops-repo-url, value: "https://git.apps.itssolutions.me/itssolutions/$(tt.params.repo-name)-config.git"}
+          - {name: gitops-values-path, value: "deploy/values.yaml"}
+        workspaces:
+          - name: sources
+            volumeClaimTemplate:
+              spec:
+                storageClassName: longhorn
+                accessModes: [ReadWriteOnce]
+                resources: {requests: {storage: 1Gi}}
+          - name: docker-credentials
+            secret: {secretName: harbor-robot-docker}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: github-webhook
+  namespace: ci
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [webhook-ci.apps.itssolutions.me]
+      secretName: wildcard-apps-tls
+  rules:
+    - host: webhook-ci.apps.itssolutions.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: el-github-listener
+                port: {number: 8080}

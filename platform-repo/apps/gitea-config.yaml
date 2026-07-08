@@ -1,0 +1,28 @@
+# Secrets Gitea via Vault/ESO — wave 4 : le secret gitea-admin doit
+# exister avant le chart (bootstrap du compte admin).
+# >>> Remplace <TON_ORG> <<<
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitea-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
+    targetRevision: master
+    path: platform-repo/config/gitea
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitea
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: -1
+      backoff: {duration: 30s, factor: 2, maxDuration: 5m}

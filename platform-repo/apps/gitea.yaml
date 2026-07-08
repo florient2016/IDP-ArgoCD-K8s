@@ -1,0 +1,86 @@
+# Gitea — forge Git interne pour les projets itssolutions.
+# git.apps.itssolutions.me | admin servi par Vault/ESO (gitea-admin)
+# Rôle : plan applicatif UNIQUEMENT. Le repo platform (control plane)
+# reste sur GitHub — pas de problème poule/œuf au bootstrap.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitea
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: https://dl.gitea.com/charts
+    chart: gitea
+    targetRevision: 10.6.*
+    helm:
+      valuesObject:
+        # Admin bootstrap depuis Vault via ESO (secret gitea-admin)
+        gitea:
+          admin:
+            existingSecret: gitea-admin
+            email: admin@itssolutions.me
+          config:
+            server:
+              DOMAIN: git.apps.itssolutions.me
+              ROOT_URL: https://git.apps.itssolutions.me
+              SSH_DOMAIN: git.apps.itssolutions.me
+            service:
+              DISABLE_REGISTRATION: true      # comptes créés par l'admin uniquement
+            webhook:
+              # l'EventListener Tekton est sur le réseau interne du cluster
+              ALLOWED_HOST_LIST: "*.apps.itssolutions.me,*.svc,*.svc.cluster.local"
+            actions:
+              ENABLED: false                  # CI = Tekton, pas Gitea Actions
+
+        # Un seul réplica : session locale, pas besoin de HA lab
+        replicaCount: 1
+
+        persistence:
+          enabled: true
+          storageClass: longhorn
+          size: 10Gi
+
+        # PostgreSQL simple intégré (pas le cluster HA du chart)
+        postgresql-ha:
+          enabled: false
+        postgresql:
+          enabled: true
+          primary:
+            persistence:
+              storageClass: longhorn
+              size: 5Gi
+            resources:
+              requests: {cpu: 100m, memory: 256Mi}
+              limits: {memory: 512Mi}
+        valkey-cluster:
+          enabled: false
+
+        resources:
+          requests: {cpu: 100m, memory: 256Mi}
+          limits: {memory: 512Mi}
+
+        ingress:
+          enabled: true
+          className: nginx
+          annotations:
+            # les push git peuvent être volumineux
+            nginx.ingress.kubernetes.io/proxy-body-size: "0"
+          hosts:
+            - host: git.apps.itssolutions.me
+              paths: [{path: /, pathType: Prefix}]
+          tls:
+            - hosts: [git.apps.itssolutions.me]
+              secretName: wildcard-apps-tls
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitea
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

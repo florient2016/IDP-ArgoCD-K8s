@@ -1,0 +1,50 @@
+# ApplicationSet — découverte automatique des apps métier.
+# Convention (option 1 — un repo <app>-config par application) :
+#   Gitea / org "itssolutions" / repos se terminant par "-config"
+#   contenant un chart Helm (ou des manifests) à la racine ou dans deploy/.
+# Chaque repo découvert => une Application Argo "app-<nom>" déployée
+# dans le namespace "<nom>".
+#
+# Effet démo : créer un repo demo-app-config dans Gitea suffit à faire
+# apparaître l'application dans Argo CD. Backstage (Phase 4) exploitera
+# exactement ce mécanisme via son scaffolder.
+#
+# Prérequis : le secret de repo Argo "repo-gitea" (voir README §3) pour
+# que le generator SCM puisse lister l'org via l'API Gitea.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: itssolutions-apps
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - scmProvider:
+        gitea:
+          owner: itssolutions
+          api: https://git.apps.itssolutions.me
+          tokenRef:
+            secretName: gitea-scm-token
+            key: token
+        filters:
+          - repositoryMatch: ".*-config$"
+  template:
+    metadata:
+      # demo-app-config -> app "demo-app"
+      name: 'app-{{ .repository | trimSuffix "-config" }}'
+    spec:
+      project: default
+      source:
+        repoURL: '{{ .url }}'
+        targetRevision: '{{ .branch }}'
+        path: deploy
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{ .repository | trimSuffix "-config" }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

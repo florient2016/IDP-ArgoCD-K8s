@@ -1,0 +1,131 @@
+# Pipeline standard de l'IDP : clone -> build+push (kaniko) -> bump GitOps.
+# La couture CI/CD : Tekton écrit dans Git, Argo CD déploie depuis Git.
+# Aucun kubectl dans le pipeline — jamais.
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: build-and-promote
+  namespace: ci
+spec:
+  description: Clone l'app, build l'image, push vers Harbor, bump le tag dans le repo GitOps.
+  params:
+    - name: app-repo-url
+      type: string
+    - name: app-revision
+      type: string
+      default: main
+    - name: image
+      type: string          # ex: harbor.apps.itssolutions.me/apps/mon-app
+    - name: gitops-repo-url
+      type: string
+    - name: gitops-values-path
+      type: string          # ex: apps/mon-app/values.yaml
+  workspaces:
+    - name: sources
+    - name: docker-credentials
+  tasks:
+    - name: clone
+      taskRef: {name: git-clone-lite}
+      workspaces: [{name: output, workspace: sources}]
+      params:
+        - {name: url, value: $(params.app-repo-url)}
+        - {name: revision, value: $(params.app-revision)}
+    - name: build-push
+      runAfter: [clone]
+      taskRef: {name: kaniko-build}
+      workspaces:
+        - {name: source, workspace: sources}
+        - {name: docker-config, workspace: docker-credentials}
+      params:
+        - {name: image, value: "$(params.image):$(tasks.clone.results.commit-short)"}
+    - name: promote
+      runAfter: [build-push]
+      taskRef: {name: gitops-bump}
+      params:
+        - {name: gitops-repo-url, value: $(params.gitops-repo-url)}
+        - {name: values-path, value: $(params.gitops-values-path)}
+        - {name: new-tag, value: $(tasks.clone.results.commit-short)}
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: git-clone-lite
+  namespace: ci
+spec:
+  params:
+    - {name: url, type: string}
+    - {name: revision, type: string, default: main}
+  workspaces:
+    - name: output
+  results:
+    - name: commit-short
+      description: SHA court du commit cloné (sert de tag d'image)
+  steps:
+    - name: clone
+      image: alpine/git:2.45.2
+      workingDir: $(workspaces.output.path)
+      script: |
+        #!/bin/sh
+        set -eu
+        git clone --depth 1 --branch "$(params.revision)" "$(params.url)" .
+        git rev-parse --short=8 HEAD | tr -d '\n' > $(results.commit-short.path)
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kaniko-build
+  namespace: ci
+spec:
+  params:
+    - {name: image, type: string}
+    - {name: dockerfile, type: string, default: ./Dockerfile}
+  workspaces:
+    - name: source
+    - name: docker-config
+      description: Secret dockerconfigjson monté (harbor-robot-docker)
+  steps:
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:v1.23.2
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: DOCKER_CONFIG
+          value: $(workspaces.docker-config.path)
+      args:
+        - --dockerfile=$(params.dockerfile)
+        - --context=$(workspaces.source.path)
+        - --destination=$(params.image)
+      resources:
+        requests: {cpu: 250m, memory: 512Mi}
+        limits: {memory: 1Gi}
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gitops-bump
+  namespace: ci
+spec:
+  params:
+    - {name: gitops-repo-url, type: string}
+    - {name: values-path, type: string}
+    - {name: new-tag, type: string}
+  steps:
+    - name: bump
+      image: alpine/git:2.45.2
+      env:
+        - name: GIT_USERNAME
+          valueFrom: {secretKeyRef: {name: git-credentials, key: username}}
+        - name: GIT_PASSWORD
+          valueFrom: {secretKeyRef: {name: git-credentials, key: password}}
+      script: |
+        #!/bin/sh
+        set -eu
+        apk add --no-cache yq >/dev/null
+        REPO_AUTH=$(echo "$(params.gitops-repo-url)" | sed "s#https://#https://${GIT_USERNAME}:${GIT_PASSWORD}@#")
+        git clone --depth 1 "$REPO_AUTH" /work && cd /work
+        yq -i '.image.tag = "$(params.new-tag)"' "$(params.values-path)"
+        git config user.email "tekton@itssolutions.me"
+        git config user.name  "tekton-ci"
+        git add "$(params.values-path)"
+        git commit -m "ci: bump $(params.values-path) image tag -> $(params.new-tag)"
+        git push
