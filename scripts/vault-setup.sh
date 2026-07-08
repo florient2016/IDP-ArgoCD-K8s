@@ -12,36 +12,37 @@ set -euo pipefail
 NS="vault-itssolutions"
 POD="vault-0"
 
-vexec() { kubectl -n "$NS" exec -i "$POD" -- sh -c "$*"; }
+#vexec() { kubectl -n "$NS" exec -i "$POD" -- sh -c "$*"; }
+vexec() { kubectl -n "$NS" exec -i "$POD" -- sh -c "export VAULT_CLIENT_TIMEOUT=600; $*"; }
 
 echo "==> 1. Initialisation (1 clé/1 seuil : LAB uniquement — en prod : 5/3)"
 if vexec "vault status -format=json" 2>/dev/null | grep -q '"initialized": true'; then
   echo "    Vault déjà initialisé, on saute."
-  echo "    (exporte VAULT_UNSEAL_KEY et VAULT_ROOT_TOKEN avant de relancer)"
-  : "${VAULT_UNSEAL_KEY:?déjà initialisé : exporte VAULT_UNSEAL_KEY}"
-  : "${VAULT_ROOT_TOKEN:?déjà initialisé : exporte VAULT_ROOT_TOKEN}"
+  echo "    (exporte VSETUP_UNSEAL_KEY et VSETUP_ROOT_TOKEN avant de relancer)"
+  : "${VSETUP_UNSEAL_KEY:?déjà initialisé : exporte VSETUP_UNSEAL_KEY}"
+  : "${VSETUP_ROOT_TOKEN:?déjà initialisé : exporte VSETUP_ROOT_TOKEN}"
 else
   INIT_OUT=$(vexec "vault operator init -key-shares=1 -key-threshold=1 -format=json")
-  VAULT_UNSEAL_KEY=$(echo "$INIT_OUT" | grep -o '"unseal_keys_b64": \[[^]]*' | grep -o '"[A-Za-z0-9+/=]\{20,\}"' | head -1 | tr -d '"')
-  VAULT_ROOT_TOKEN=$(echo "$INIT_OUT" | grep -o '"root_token": "[^"]*' | cut -d'"' -f4)
+  VSETUP_UNSEAL_KEY=$(echo "$INIT_OUT" | grep -o '"unseal_keys_b64": \[[^]]*' | grep -o '"[A-Za-z0-9+/=]\{20,\}"' | head -1 | tr -d '"')
+  VSETUP_ROOT_TOKEN=$(echo "$INIT_OUT" | grep -o '"root_token": "[^"]*' | cut -d'"' -f4)
   echo ""
   echo "    ┌──────────────────────────────────────────────────────────┐"
   echo "    │  SAUVEGARDE CES DEUX VALEURS HORS DU CLUSTER (KeePass…)  │"
   echo "    │  Perdues = Vault et tous ses secrets irrécupérables.     │"
   echo "    └──────────────────────────────────────────────────────────┘"
-  echo "    UNSEAL KEY : $VAULT_UNSEAL_KEY"
-  echo "    ROOT TOKEN : $VAULT_ROOT_TOKEN"
+  echo "    UNSEAL KEY : $VSETUP_UNSEAL_KEY"
+  echo "    ROOT TOKEN : $VSETUP_ROOT_TOKEN"
   echo ""
   read -rp "    Tape 'ok' quand c'est sauvegardé : " ack
   [ "$ack" = "ok" ] || { echo "Abandon."; exit 1; }
 fi
 
 echo "==> 2. Unseal"
-vexec "vault operator unseal $VAULT_UNSEAL_KEY" >/dev/null
+vexec "vault operator unseal $VSETUP_UNSEAL_KEY" >/dev/null
 echo "    Vault unsealed."
 
 echo "==> 3. Login root (session de config uniquement)"
-vexec "vault login -no-print $VAULT_ROOT_TOKEN"
+vexec "vault login -no-print $VSETUP_ROOT_TOKEN"
 
 echo "==> 4. Moteur KV v2 sur secret/"
 vexec "vault secrets enable -path=secret kv-v2" 2>/dev/null || echo "    secret/ déjà activé."
