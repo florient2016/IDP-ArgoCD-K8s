@@ -1,7 +1,16 @@
-# Gitea — forge Git interne pour les projets itssolutions.
-# git.apps.itssolutions.me | admin servi par Vault/ESO (gitea-admin)
-# Rôle : plan applicatif UNIQUEMENT. Le repo platform (control plane)
-# reste sur GitHub — pas de problème poule/œuf au bootstrap.
+# Gitea — forge Git interne pour les projets itssolutions (plan applicatif).
+# git.apps.itssolutions.me | admin servi par Vault/ESO (secret gitea-admin)
+#
+# v2 — architecture simplifiée suite au retrait des images Bitnami de
+# Docker Hub (postgresql/redis-cluster impullables) :
+#   - Base de données : SQLite sur le PVC Longhorn (recommandé par Gitea
+#     pour les petites instances ; migration PostgreSQL possible plus tard
+#     via gitea dump/restore si l'instance grossit)
+#   - Cache/sessions : mémoire locale | Queues : level (sur disque)
+#   - AUCUN sous-chart Bitnami => un seul pod, une seule image (officielle)
+#
+# Le repo platform (control plane) reste sur GitHub — Gitea n'héberge
+# que le code des apps et les repos <app>-config.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,31 +26,33 @@ spec:
     targetRevision: 10.6.*
     helm:
       valuesObject:
-        # Admin bootstrap depuis Vault via ESO (secret gitea-admin)
+        # ── Gitea lui-même ─────────────────────────────────────────
         gitea:
           admin:
-            existingSecret: gitea-admin
+            existingSecret: gitea-admin        # ExternalSecret (config/gitea/)
             email: admin@itssolutions.me
           config:
             server:
               DOMAIN: git.apps.itssolutions.me
               ROOT_URL: https://git.apps.itssolutions.me
               SSH_DOMAIN: git.apps.itssolutions.me
-            service:
-              DISABLE_REGISTRATION: true      # comptes créés par l'admin uniquement
-            webhook:
-              # l'EventListener Tekton est sur le réseau interne du cluster
-              ALLOWED_HOST_LIST: "*.apps.itssolutions.me,*.svc,*.svc.cluster.local"
-            actions:
-              ENABLED: false                  # CI = Tekton, pas Gitea Actions
+            database:
+              DB_TYPE: sqlite3                 # sur le PVC — zéro dépendance
             cache:
               ADAPTER: memory
             session:
               PROVIDER: memory
             queue:
-              TYPE: level
+              TYPE: level                      # queues persistées sur le PVC
+            service:
+              DISABLE_REGISTRATION: true       # comptes créés par l'admin
+            webhook:
+              # autoriser les webhooks vers l'EventListener Tekton (interne)
+              ALLOWED_HOST_LIST: "*.apps.itssolutions.me,*.svc,*.svc.cluster.local"
+            actions:
+              ENABLED: false                   # la CI, c'est Tekton
 
-        # Un seul réplica : session locale, pas besoin de HA lab
+        # ── Topologie : mono-réplica (sessions/cache en mémoire) ──
         replicaCount: 1
 
         persistence:
@@ -49,21 +60,20 @@ spec:
           storageClass: longhorn
           size: 10Gi
 
-        # PostgreSQL simple intégré (pas le cluster HA du chart)
-        postgresql-ha:
-          enabled: false
-        postgresql:
-          enabled: true
-          primary:
-            persistence:
-              storageClass: longhorn
-              size: 5Gi
-            resources:
-              requests: {cpu: 100m, memory: 256Mi}
-              limits: {memory: 512Mi}
+        # ── Sous-charts externes : TOUS désactivés ─────────────────
+        # (toutes les variantes de noms selon les versions du chart ;
+        #  les clés inconnues sont ignorées sans erreur)
         redis-cluster:
           enabled: false
         redis:
+          enabled: false
+        postgresql:
+          enabled: false
+        postgresql-ha:
+          enabled: false
+        valkey-cluster:
+          enabled: false
+        valkey:
           enabled: false
 
         resources:
