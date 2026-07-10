@@ -68,7 +68,12 @@ spec:
       script: |
         #!/bin/sh
         set -eu
-        git clone --depth 1 --branch "$(params.revision)" "$(params.url)" .
+        # le PVC peut contenir lost+found (ext4) ou des restes : on nettoie
+        find . -mindepth 1 -maxdepth 1 ! -name 'lost+found' -exec rm -rf {} +
+        git init -q .
+        git remote add origin "$(params.url)"
+        git fetch -q --depth 1 origin "$(params.revision)"
+        git checkout -q FETCH_HEAD
         git rev-parse --short=8 HEAD | tr -d '\n' > $(results.commit-short.path)
 ---
 apiVersion: tekton.dev/v1
