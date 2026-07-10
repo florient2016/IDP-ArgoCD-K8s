@@ -46,7 +46,7 @@ spec:
   triggers:
     - name: on-push-main
       interceptors:
-        - ref: {name: gitea}
+        - ref: {name: github}
           params:
              - name: secretRef
                value: {secretName: github-webhook-secret, secretKey: secretToken}
