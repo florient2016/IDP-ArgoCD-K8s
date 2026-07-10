@@ -21,6 +21,7 @@ spec:
   goTemplateOptions: ["missingkey=error"]
   generators:
     - scmProvider:
+        cloneProtocol: https
         gitea:
           owner: itssolutions
           api: https://git.apps.itssolutions.me
