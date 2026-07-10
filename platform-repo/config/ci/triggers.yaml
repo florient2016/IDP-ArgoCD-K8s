@@ -63,7 +63,7 @@ spec:
         - ref: {name: cel}
           params:
             - name: filter
-              value: body.ref == 'refs/heads/main'
+              value: body.ref == 'refs/heads/main' && !body.repository.name.endsWith('-config')
       bindings:
         - {name: repo-url, value: $(body.repository.clone_url)}
         - {name: repo-name, value: $(body.repository.name)}
