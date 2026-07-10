@@ -2,6 +2,14 @@
 # Endpoint public : https://webhook-ci.apps.itssolutions.me
 # Prérequis : vault kv put secret/ci/github-webhook secret='<CHAINE_ALEATOIRE>'
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pipeline-sa
+  namespace: ci
+secrets:
+  - name: git-credentials
+---
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -79,6 +87,8 @@ spec:
         namespace: ci
       spec:
         pipelineRef: {name: build-and-promote}
+        taskRunTemplate:
+          serviceAccountName: pipeline-sa
         params:
           - {name: app-repo-url, value: $(tt.params.repo-url)}
           - {name: image, value: "harbor.apps.itssolutions.me/apps/$(tt.params.repo-name)"}
