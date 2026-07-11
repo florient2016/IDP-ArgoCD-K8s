@@ -18,3 +18,9 @@ spec:
     initdb:
       database: backstage
       owner: backstage
+  managed:
+    roles:
+      - name: backstage
+        ensure: present
+        login: true
+        createdb: true
