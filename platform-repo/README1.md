@@ -14,6 +14,8 @@ V="kubectl -n vault-itssolutions exec -i vault-0 -- vault"
 
 $V kv put secret/gitea admin-username='gitea-admin' admin-password='<FORT>'
 # le PAT Gitea et le token SCM viendront après la création des comptes (§3)
+
+# le PAT Gitea et le token SCM viendront après la création des comptes (§3)
 ```
 
 ## 2. Déployer Gitea
@@ -27,6 +29,8 @@ git add . && git commit -m "Phase 3.5: gitea (forge interne)" && git push
 
 Waves : gitea-config (4) -> gitea (5). Premier démarrage ~2 min (migrations).
 UI : https://git.apps.itssolutions.me — login avec le compte admin de Vault.
+
+
 
 ## 3. Organisation, comptes de service, tokens (une fois, via UI)
 
@@ -129,3 +133,24 @@ vivent dans le cluster : leur sauvegarde = les PVCs gitea + postgresql.
 Options : backups Longhorn vers NFS/S3 (recommandé, à configurer en
 Phase 6 avec Velero), et/ou push-mirrors Gitea vers GitHub pour les
 repos critiques (Settings du repo -> Mirror -> push mirror).
+
+
+## Troubleshooting
+kubectl annotate clustersecretstore vault force-sync=$(date +%s) --overwrite
+# si pas d'effet en ~30 s, purge totale du cache ESO :
+kubectl -n external-secrets rollout restart deploy external-secrets
+kubectl get clustersecretstore vault -w
+
+# 1. Charger le root token en variable de session (rien ne s'affiche à la saisie) :
+read -s VROOT     # colle le root token depuis ton gestionnaire, puis Entrée
+
+# 2. Recréer le wrapper :
+vput() { kubectl -n vault-itssolutions exec -i vault-0 -- sh -c "VAULT_TOKEN='$VROOT' vault $*"; }
+
+# 3. Et ta commande passe :
+vput kv put secret/backstage \
+  gitea-token='39d07aa1554d6XXXXXXXXXX' \
+  backend-secret="$(openssl rand -hex 24)"
+
+# vérification :
+vput kv get secret/backstage

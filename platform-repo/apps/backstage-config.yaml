@@ -1,0 +1,28 @@
+# Prérequis Backstage : cluster PostgreSQL (CNPG) + secrets via Vault/ESO.
+# Wave 6 : après l'opérateur CNPG, avant Backstage.
+# >>> Remplace <TON_ORG> <<<
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
+    targetRevision: master
+    path: platform-repo/config/backstage
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backstage
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: -1
+      backoff: {duration: 30s, factor: 2, maxDuration: 5m}

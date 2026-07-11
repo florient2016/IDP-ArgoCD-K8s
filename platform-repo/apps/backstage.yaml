@@ -1,0 +1,94 @@
+# Backstage — le portail développeur.
+# backstage.apps.itssolutions.me | DB: CNPG (backstage-db) | secrets: Vault/ESO
+#
+# Phase 4a : image upstream ghcr.io/backstage/backstage — catalogue,
+# TechDocs basique et intégration Gitea en LECTURE (discovery d'URL).
+# Phase 4b (golden path complet) : image custom buildée PAR TON PIPELINE
+# avec le plugin scaffolder Gitea — voir README §5.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+spec:
+  project: default
+  source:
+    repoURL: https://backstage.github.io/charts
+    chart: backstage
+    targetRevision: 2.*
+    helm:
+      valuesObject:
+        backstage:
+          image:
+            registry: ghcr.io
+            repository: backstage/backstage
+            tag: latest            # Phase 4b : harbor.apps.../platform/backstage:<sha>
+          extraEnvVars:
+            - name: POSTGRES_HOST
+              value: backstage-db-rw
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: {name: backstage-db-app, key: username}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: backstage-db-app, key: password}
+          extraEnvVarsSecrets:
+            - backstage-secrets    # GITEA_TOKEN, BACKEND_SECRET
+          appConfig:
+            app:
+              title: IDP itssolutions
+              baseUrl: https://backstage.apps.itssolutions.me
+            organization:
+              name: itssolutions
+            backend:
+              baseUrl: https://backstage.apps.itssolutions.me
+              listen: {port: 7007}
+              auth:
+                keys:
+                  - secret: ${BACKEND_SECRET}
+              database:
+                client: pg
+                connection:
+                  host: ${POSTGRES_HOST}
+                  port: ${POSTGRES_PORT}
+                  user: ${POSTGRES_USER}
+                  password: ${POSTGRES_PASSWORD}
+              cors:
+                origin: https://backstage.apps.itssolutions.me
+            integrations:
+              gitea:
+                - host: git.apps.itssolutions.me
+                  baseUrl: https://git.apps.itssolutions.me
+                  token: ${GITEA_TOKEN}
+            catalog:
+              rules:
+                - allow: [Component, System, API, Resource, Location, Template]
+              locations:
+                # le catalogue de la plateforme (repo dédié dans Gitea) :
+                - type: url
+                  target: https://git.apps.itssolutions.me/itssolutions/idp-catalog/src/branch/main/catalog-info.yaml
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {memory: 1Gi}
+        ingress:
+          enabled: true
+          className: nginx
+          host: backstage.apps.itssolutions.me
+          tls:
+            enabled: true
+            secretName: wildcard-apps-tls
+        postgresql:
+          enabled: false           # on utilise CNPG, pas le sous-chart Bitnami (!)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backstage
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
