@@ -74,6 +74,23 @@ spec:
           resources:
             requests: {cpu: 250m, memory: 512Mi}
             limits: {memory: 1Gi}
+          startupProbe:
+            httpGet:
+              path: /.backstage/health/v1/readiness
+              port: 7007
+            periodSeconds: 10
+            failureThreshold: 60        # 10 min pour un boot lent (migrations)
+          livenessProbe:
+            httpGet:
+              path: /.backstage/health/v1/readiness   # readiness, pas liveness !
+              port: 7007
+            periodSeconds: 20
+            failureThreshold: 6         # zombie détecté et tué en ~2 min
+          readinessProbe:
+            httpGet:
+              path: /.backstage/health/v1/readiness
+              port: 7007
+            periodSeconds: 10
         ingress:
           enabled: true
           className: nginx
