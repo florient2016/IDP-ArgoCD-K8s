@@ -12,8 +12,8 @@ spec:
     size: 5Gi
     storageClass: longhorn
   resources:
-    requests: {cpu: 100m, memory: 256Mi}
-    limits: {memory: 512Mi}
+    requests: {cpu: 500m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1Gi}
   bootstrap:
     initdb:
       database: backstage
