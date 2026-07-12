@@ -1,0 +1,69 @@
+# Le GOLDEN PATH — Software Template "new-microservice".
+# À placer dans le repo idp-catalog : templates/new-microservice/template.yaml
+# (+ un dossier skeleton/ et skeleton-config/ à côté, voir README §5).
+# Un clic "Create" => 2 repos Gitea => webhook => build => ApplicationSet => prod.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: new-microservice
+  title: Nouveau microservice
+  description: Crée <app> + <app>-config dans Gitea — build et déploiement automatiques (Tekton/Harbor/Argo).
+  tags: [recommended, itssolutions]
+spec:
+  owner: platform-team
+  type: service
+  parameters:
+    - title: Le service
+      required: [name]
+      properties:
+        name:
+          title: Nom
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          description: minuscules et tirets (ex. payment-api)
+        description:
+          title: Description
+          type: string
+  steps:
+    - id: fetch-app
+      name: Squelette applicatif
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+    - id: publish-app
+      name: Repo code
+      action: publish:gitea
+      input:
+        repoUrl: git.apps.itssolutions.me?owner=itssolutions&repo=${{ parameters.name }}
+        defaultBranch: main
+        description: ${{ parameters.description }}
+    - id: fetch-config
+      name: Squelette GitOps
+      action: fetch:template
+      input:
+        url: ./skeleton-config
+        targetPath: config-out
+        values:
+          name: ${{ parameters.name }}
+    - id: publish-config
+      name: Repo config
+      action: publish:gitea
+      input:
+        repoUrl: git.apps.itssolutions.me?owner=itssolutions&repo=${{ parameters.name }}-config
+        defaultBranch: main
+        sourcePath: config-out
+        description: Config GitOps de ${{ parameters.name }}
+    - id: register
+      name: Enregistrer au catalogue
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish-app'].output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+  output:
+    links:
+      - {title: Code, url: "https://git.apps.itssolutions.me/itssolutions/${{ parameters.name }}"}
+      - {title: Config GitOps, url: "https://git.apps.itssolutions.me/itssolutions/${{ parameters.name }}-config"}
+      - {title: "Production (après 1er build)", url: "https://${{ parameters.name }}.apps.itssolutions.me"}

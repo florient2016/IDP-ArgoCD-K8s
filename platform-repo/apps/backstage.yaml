@@ -1,10 +1,7 @@
-# Backstage — le portail développeur.
-# backstage.apps.itssolutions.me | DB: CNPG (backstage-db) | secrets: Vault/ESO
-#
-# Phase 4a : image upstream ghcr.io/backstage/backstage — catalogue,
-# TechDocs basique et intégration Gitea en LECTURE (discovery d'URL).
-# Phase 4b (golden path complet) : image custom buildée PAR TON PIPELINE
-# avec le plugin scaffolder Gitea — voir README §5.
+# Backstage v2 — image CUSTOM buildée par le pipeline (méthode officielle),
+# plus jamais l'image de démo ghcr.io (51 boots perdus lui rendent hommage).
+# >>> Mettre à jour "tag" avec le SHA produit par le pipeline (puis
+#     automatisable : le pipeline bump ce fichier comme pour demo-app). <<<
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -22,9 +19,9 @@ spec:
       valuesObject:
         backstage:
           image:
-            registry: ghcr.io
-            repository: backstage/backstage
-            tag: 1.33.6            # Phase 4b : harbor.apps.../platform/backstage:<sha>
+            registry: harbor.apps.itssolutions.me
+            repository: apps/backstage-app
+            tag: "<SHA_DU_BUILD>"          # ex: 3fa9c21b — jamais latest
           extraEnvVars:
             - name: POSTGRES_HOST
               value: backstage-db-rw
@@ -37,60 +34,30 @@ spec:
               valueFrom:
                 secretKeyRef: {name: backstage-db-app, key: password}
           extraEnvVarsSecrets:
-            - backstage-secrets    # GITEA_TOKEN, BACKEND_SECRET
-          appConfig:
-            app:
-              title: IDP itssolutions
-              baseUrl: https://backstage.apps.itssolutions.me
-            organization:
-              name: itssolutions
-            backend:
-              baseUrl: https://backstage.apps.itssolutions.me
-              listen: {port: 7007}
-              auth:
-                keys:
-                  - secret: ${BACKEND_SECRET}
-              database:
-                client: pg
-                connection:
-                  host: ${POSTGRES_HOST}
-                  port: ${POSTGRES_PORT}
-                  user: ${POSTGRES_USER}
-                  password: ${POSTGRES_PASSWORD}
-              cors:
-                origin: https://backstage.apps.itssolutions.me
-            integrations:
-              gitea:
-                - host: git.apps.itssolutions.me
-                  baseUrl: https://git.apps.itssolutions.me
-                  token: ${GITEA_TOKEN}
-            catalog:
-              rules:
-                - allow: [Component, System, API, Resource, Location, Template]
-              locations:
-                # le catalogue de la plateforme (repo dédié dans Gitea) :
-                - type: url
-                  target: https://git.apps.itssolutions.me/itssolutions/idp-catalog/src/branch/main/catalog-info.yaml
+            - backstage-secrets              # GITEA_TOKEN, BACKEND_SECRET
+          # La config vit DANS l'image (app-config.production.yaml, versionnée
+          # dans le repo backstage-app) — plus d'appConfig injecté par le chart.
+          # Le chart de démo perdait la course des migrations ; notre app
+          # n'embarque que nos plugins : catalog, scaffolder(+gitea),
+          # techdocs, search, auth — ni signals ni mcp-actions.
+          args: ["--config", "app-config.yaml", "--config", "app-config.production.yaml"]
+          startupProbe:
+            httpGet: {path: /.backstage/health/v1/readiness, port: 7007}
+            periodSeconds: 10
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /.backstage/health/v1/readiness, port: 7007}
+            periodSeconds: 20
+            failureThreshold: 6
+          readinessProbe:
+            httpGet: {path: /.backstage/health/v1/readiness, port: 7007}
+            periodSeconds: 10
           resources:
             requests: {cpu: 250m, memory: 512Mi}
             limits: {memory: 1Gi}
-          startupProbe:
-            httpGet:
-              path: /.backstage/health/v1/readiness
-              port: 7007
-            periodSeconds: 10
-            failureThreshold: 60        # 10 min pour un boot lent (migrations)
-          livenessProbe:
-            httpGet:
-              path: /.backstage/health/v1/readiness   # readiness, pas liveness !
-              port: 7007
-            periodSeconds: 20
-            failureThreshold: 6         # zombie détecté et tué en ~2 min
-          readinessProbe:
-            httpGet:
-              path: /.backstage/health/v1/readiness
-              port: 7007
-            periodSeconds: 10
+        # pull depuis Harbor (projet privé) :
+        imagePullSecrets:
+          - harbor-pull
         ingress:
           enabled: true
           className: nginx
@@ -99,10 +66,7 @@ spec:
             enabled: true
             secretName: wildcard-apps-tls
         postgresql:
-          enabled: false           # on utilise CNPG, pas le sous-chart Bitnami (!)
-        deployment:                   # ← AJOUT : même niveau que backstage/ingress
-          strategy:
-            type: Recreate
+          enabled: false                     # CNPG, toujours
   destination:
     server: https://kubernetes.default.svc
     namespace: backstage
@@ -118,4 +82,4 @@ spec:
       kind: Deployment
       name: backstage
       jsonPointers:
-        - /spec/strategy
+        - /spec/strategy                     # Recreate patché à la main (chart ne l'expose pas)
