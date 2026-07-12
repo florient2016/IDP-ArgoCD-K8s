@@ -100,6 +100,9 @@ spec:
             secretName: wildcard-apps-tls
         postgresql:
           enabled: false           # on utilise CNPG, pas le sous-chart Bitnami (!)
+        deployment:                   # ← AJOUT : même niveau que backstage/ingress
+          strategy:
+            type: Recreate
   destination:
     server: https://kubernetes.default.svc
     namespace: backstage
