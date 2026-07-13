@@ -57,34 +57,7 @@ spec:
         yarn install --immutable
         yarn tsc
         yarn build:backend
-      resources:
+      computeResources:
         requests: {cpu: "1", memory: 3Gi}
         limits: {cpu: "2", memory: 4Gi}
       # build lourd : ~8-15 min au premier run (téléchargement de tout yarn)
----
-# PipelineRun de déclenchement manuel (le premier build, ou re-build à la demande).
-# Workspace de 8Gi : node_modules + dist de Backstage sont volumineux.
-# NB : le TriggerTemplate générique déclenchera aussi sur les push backstage-app,
-# mais avec le pipeline standard (dockerfile racine absent -> échec silencieux).
-# Option propre : ajouter un CEL excluant backstage-app du trigger générique,
-# et un trigger dédié pointant sur build-backstage (voir README).
-apiVersion: tekton.dev/v1
-kind: PipelineRun
-metadata:
-  generateName: build-backstage-manual-
-  namespace: ci
-spec:
-  pipelineRef: {name: build-backstage}
-  taskRunTemplate:
-    serviceAccountName: pipeline-sa
-  timeouts:
-    pipeline: 45m
-  workspaces:
-    - name: sources
-      volumeClaimTemplate:
-        spec:
-          storageClassName: longhorn
-          accessModes: [ReadWriteOnce]
-          resources: {requests: {storage: 8Gi}}
-    - name: docker-credentials
-      secret: {secretName: harbor-robot-docker}

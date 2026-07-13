@@ -76,7 +76,7 @@ yarn build:backend
 git init -b main
 git add .
 git commit -m "feat: backstage-app initial (create-app + scaffolder gitea)"
-git remote add origin https://tekton-ci:<PAT_TEKTON>@git.apps.itssolutions.me/itssolutions/backstage-app.git
+git remote add origin https://tekton-ci:bc33d8dae38610f87073f91be71725e082eb9d8b@git.apps.itssolutions.me/itssolutions/backstage-app.git
 git push -u origin main
 # (créer d'abord le repo backstage-app dans l'org via l'UI admin,
 #  SANS auto-init cette fois — on pousse un historique complet)
