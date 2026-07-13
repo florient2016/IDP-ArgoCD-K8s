@@ -53,8 +53,17 @@ spec:
       script: |
         #!/bin/bash
         set -eu
+        # chaîne de compilation des modules natifs — alignée sur le
+        # Dockerfile officiel create-app (isolated-vm/scaffolder) :
+        apt-get update -qq && apt-get install -y -qq python3 g++ build-essential make >/dev/null
+        export PYTHON=/usr/bin/python3
+
         corepack enable
-        yarn install --immutable
+        if ! yarn install --immutable; then
+          echo "════ BUILD LOGS DES MODULES NATIFS EN ÉCHEC ════"
+          for f in /tmp/xfs-*/build.log; do echo "--- $f"; tail -30 "$f"; done
+          exit 1
+        fi
         yarn tsc
         yarn build:backend
       computeResources:
