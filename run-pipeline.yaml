@@ -1,0 +1,20 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: build-backstage-manuals-
+  namespace: ci
+spec:
+  pipelineRef: {name: build-backstage}
+  taskRunTemplate:
+    serviceAccountName: pipeline-sa
+  timeouts:
+    pipeline: 45m
+  workspaces:
+    - name: sources
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: [ReadWriteOnce]
+          resources: {requests: {storage: 8Gi}}
+    - name: docker-credentials
+      secret: {secretName: harbor-robot-docker}

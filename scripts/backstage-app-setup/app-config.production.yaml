@@ -1,0 +1,47 @@
+app:
+  baseUrl: https://backstage.apps.itssolutions.me
+
+organization:
+  name: itssolutions
+
+backend:
+  baseUrl: https://backstage.apps.itssolutions.me
+  listen: { port: 7007 }
+  auth:
+    externalAccess:              # format moderne (backend.auth.keys est déprécié)
+      - type: static
+        options:
+          token: ${BACKEND_SECRET}
+          subject: internal-services
+  database:
+    client: pg
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+  cors:
+    origin: https://backstage.apps.itssolutions.me
+
+integrations:
+  gitea:
+    - host: git.apps.itssolutions.me
+      baseUrl: https://git.apps.itssolutions.me
+      username: backstage
+      password: ${GITEA_TOKEN}
+
+auth:
+  providers:
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
+      # LAB uniquement — la doc officielle exige un vrai provider en prod.
+      # Durcissement prévu : OIDC (Keycloak/Dex) en phase 5/6.
+
+catalog:
+  rules:
+    - allow: [Component, System, API, Resource, Location, Template, Group, User]
+  locations:
+    - type: url
+      target: https://git.apps.itssolutions.me/itssolutions/idp-catalog/src/branch/main/catalog-info.yaml
+    - type: url
+      target: https://git.apps.itssolutions.me/itssolutions/idp-catalog/src/branch/main/templates/new-microservice/template.yaml

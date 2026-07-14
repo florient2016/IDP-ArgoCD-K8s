@@ -63,7 +63,7 @@ spec:
         - ref: {name: cel}
           params:
             - name: filter
-              value: body.ref == 'refs/heads/main' && !body.repository.name.endsWith('-config')
+              value: body.ref == value: body.ref == 'refs/heads/main' && !body.repository.name.endsWith('-config') && body.repository.name != 'backstage-app' && body.repository.name != 'idp-catalog'
       bindings:
         - {name: repo-url, value: $(body.repository.clone_url)}
         - {name: repo-name, value: $(body.repository.name)}
