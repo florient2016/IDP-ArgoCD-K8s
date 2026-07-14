@@ -67,6 +67,6 @@ spec:
         yarn tsc
         yarn build:backend
       computeResources:
-        requests: {cpu: "1", memory: 3Gi}
-        limits: {cpu: "2", memory: 4Gi}
+        requests: {cpu: "2", memory: 3Gi}
+        limits: {cpu: "4", memory: 5Gi}
       # build lourd : ~8-15 min au premier run (téléchargement de tout yarn)

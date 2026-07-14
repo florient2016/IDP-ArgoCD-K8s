@@ -8,7 +8,7 @@ spec:
   taskRunTemplate:
     serviceAccountName: pipeline-sa
   timeouts:
-    pipeline: 45m
+    pipeline: 3h
   workspaces:
     - name: sources
       volumeClaimTemplate:
