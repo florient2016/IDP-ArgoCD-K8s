@@ -1,0 +1,252 @@
+# IDP itssolutions — Internal Developer Platform sur Kubernetes/Proxmox
+
+Plateforme de développement interne complète, souveraine et 100% GitOps,
+construite sur un cluster kubeadm 3 nœuds (Proxmox). D'un `git push` à la
+production avec TLS valide, sans une seule commande kubectl dans le chemin.
+
+```
+Développeur ──push──▶ Gitea ──webhook──▶ Tekton ──build/push──▶ Harbor
+                                            │
+                                            └──bump──▶ <app>-config ──▶ Argo CD ──▶ Prod
+Backstage (portail) ── "Create" ──▶ scaffolder ──▶ 2 repos Gitea ──▶ (boucle ci-dessus)
+Vault ──▶ External Secrets ──▶ Secrets K8s (tous les composants)
+```
+
+## Architecture
+
+| Composant | Rôle | URL |
+|---|---|---|
+| MetalLB | LoadBalancer L2 (pool 10.10.0.240-250) | — |
+| ingress-nginx | Ingress + TLS wildcard par défaut | — |
+| cert-manager | Certificats Let's Encrypt (DNS-01 Cloudflare) | — |
+| Longhorn | Stockage distribué (disques dédiés /mnt/longhorn-disk) | — |
+| Argo CD | Moteur GitOps (app-of-apps) | argocd.apps.itssolutions.me |
+| Vault | Secrets (Raft standalone, ns vault-itssolutions) | vault.apps.itssolutions.me |
+| External Secrets | Pont Vault → Secrets K8s | — |
+| Harbor | Registre d'images privé | harbor.apps.itssolutions.me |
+| Gitea | Forge Git interne (SQLite) | git.apps.itssolutions.me |
+| Tekton | Pipelines CI (vendoré dans le repo) | — |
+| CloudNativePG | Opérateur PostgreSQL | — |
+| Backstage | Portail développeur (image custom) | backstage.apps.itssolutions.me |
+
+Repo control-plane : `platform-repo/` — `apps/` (Applications Argo,
+sync-waves 0→7), `config/<composant>/` (manifests), `runbooks/`
+(objets à lancer par `kubectl create`, hors des paths Argo).
+
+---
+
+## Phase 0 — Fondations
+
+1. **MetalLB** : IPAddressPool 10.10.0.240-250 + L2Advertisement.
+2. **ingress-nginx** : Service LoadBalancer (10.10.0.240), 2 replicas,
+   `--default-ssl-certificate=ingress-nginx/wildcard-apps-tls` — un seul
+   wildcard sert tout `*.apps`, aucun secret TLS à répliquer par namespace.
+3. **cert-manager** : ClusterIssuers staging/prod, solver **DNS-01
+   Cloudflare** (token API en secret). Certificate wildcard
+   `*.apps.itssolutions.me`.
+4. **Longhorn** : 2 réplicas, **disques dédiés** sur les workers
+   (scheduling désactivé sur le disque OS) — vital pour la stabilité I/O.
+5. **DNS Cloudflare** : enregistrements en **nuage GRIS** (DNS only — le
+   proxy orange ne peut pas joindre des IP privées),
+   `*.apps → 10.10.0.240`, une seule source de vérité.
+6. **sysctl** sur tous les nœuds (99-k8s-limits.conf) : inotify
+   instances/watches et file-max relevés — leur épuisement a corrompu
+   des PVC en début de projet.
+
+## Phase 1 — GitOps (Argo CD)
+
+1. Installation Argo CD (`server.insecure: true` derrière nginx),
+   ingress argocd.apps.itssolutions.me.
+2. **App-of-apps** : `bootstrap/root-app.yaml` (appliqué à la main, une
+   seule fois) pointe `platform-repo/apps/` — tout fichier ajouté dans
+   apps/ est déployé automatiquement, ordonné par sync-waves.
+3. Règle de vie : toute modification passe par commit + push ;
+   `kubectl -n argocd annotate application <x> argocd.argoproj.io/refresh=hard`
+   pour accélérer la prise en compte.
+
+## Phase 2 — Secrets (Vault + External Secrets)
+
+1. **Vault** standalone Raft (PVC Longhorn 5Gi, ns vault-itssolutions),
+   init/unseal scripté (clés dans ~/vault-init-*.json → au coffre !).
+2. **ESO** + ClusterSecretStore `vault` : auth Kubernetes, role
+   `external-secrets`, policy lecture `secret/data/*`.
+3. Pattern uniforme pour TOUT le projet : `vault kv put secret/<x>` →
+   ExternalSecret dans le namespace consommateur → Secret K8s synchronisé.
+4. Session CLI (perdue à chaque restart du pod) — wrapper :
+   `read -s VROOT` puis
+   `vput() { kubectl -n vault-itssolutions exec -i vault-0 -- sh -c "VAULT_TOKEN='$VROOT' vault $*"; }`
+
+## Phase 3 — Registre + CI (Harbor, Tekton)
+
+1. **Harbor** : PVCs Longhorn, admin via ExternalSecret (secret/harbor).
+   Projet `apps` (privé), robot **`robot$apps+ci`** push+pull sans
+   expiration → `vput kv put secret/ci/harbor-robot username='robot$apps+ci' ...`
+   (simples quotes obligatoires — le `$`).
+2. **Tekton** vendoré dans `config/tekton-install/` (pipelines, triggers,
+   interceptors, dashboard — app Argo dédiée avec ServerSideApply).
+3. **Pipeline générique `build-and-promote`** :
+   - `git-clone-lite` : init + fetch + checkout FETCH_HEAD (robuste aux
+     PVC non vides — lost+found ext4), résultat commit-short = tag image ;
+   - `kaniko-build` : dockerconfig monté sous le nom **config.json**
+     (ExternalSecret template type Opaque — kaniko ne lit pas
+     .dockerconfigjson) ;
+   - `gitops-bump` : yq du tag dans `deploy/values.yaml` du repo
+     `<app>-config` + push.
+4. **ServiceAccount `pipeline-sa`** portant `git-credentials` (annotation
+   `tekton.dev/git-0`) — l'auth des clones de repos privés.
+
+## Phase 3.5 — Forge interne (Gitea) + découverte (ApplicationSet)
+
+1. **Gitea** : chart officiel, **SQLite** + cache memory + queues level —
+   tous les sous-charts Bitnami désactivés (images retirées de Docker Hub).
+2. Org `itssolutions` ; comptes de service :
+   - `tekton-ci` (team write, PAT repo RW → secret/ci/git-credentials)
+   - `argocd` (PAT lecture org+repo+**issue**+user+misc — le SDK Gitea
+     exige read:issue, sinon 403 incompréhensibles)
+   - `backstage` (Owners, PAT org RW + repo RW → secret/backstage)
+   PATs sauvegardés dans secret/bootstrap/gitea-pats.
+3. **Webhook d'organisation** → el-github-listener.ci.svc:8080,
+   interceptor **github** (Gitea émet des headers GitHub-compatibles ;
+   un interceptor "gitea" n'existe pas), secret HMAC via ExternalSecret,
+   CEL : main uniquement, exclusion `*-config`, idp-catalog, backstage-app.
+4. **ApplicationSet `itssolutions-apps`** : scmProvider gitea
+   (api https://git.apps..., tokenRef gitea-scm-token),
+   **cloneProtocol: https** (sinon URL SSH), filtre `.*-config$` →
+   chaque `<app>-config` devient une Application (path deploy/,
+   namespace = app). Secret `repo-gitea-creds` avec le label
+   `argocd.argoproj.io/secret-type: repo-creds`.
+5. **Boucle validée de bout en bout** : push demo-app → webhook → build →
+   Harbor → bump demo-app-config → Argo →
+   https://demo-app.apps.itssolutions.me ✅ (pull secret harbor-pull
+   dans le namespace applicatif).
+
+## Phase 4 — Portail (Backstage, méthode officielle)
+
+⚠️ **Leçon majeure** : l'image `ghcr.io/backstage/backstage` est une
+**démo** ("ce que produit create-app out of the box") — 51 restarts
+MigrationLocked sur ses plugins signals/mcp-actions. La méthode
+supportée : générer SA propre app, RETIRER ces plugins d'index.ts
+(create-app les inclut aussi !) et builder SA propre image.
+
+1. **CloudNativePG** (opérateur, wave 5) + Cluster `backstage-db`
+   (PG 17, PVC 5Gi, cpu 500m-1/mem 512Mi-1Gi). Le rôle backstage exige
+   **CREATEDB** (Backstage crée une base PAR plugin — 12 au total) :
+   `managed.roles` dans le CR + ALTER ROLE.
+2. **backstage-app** (sur le poste — Node via nvm, jamais le nodejs dnf) :
+   - `npx @backstage/create-app@latest` (interactif !) ;
+   - `yarn --cwd packages/backend add @backstage/plugin-scaffolder-backend-module-gitea`
+     + `backend.add(import(...gitea...))` dans packages/backend/src/index.ts ;
+   - **retrait des plugins signals et mcp-actions** (et kubernetes,
+     non configuré) — create-app les inclut PAR DÉFAUT, et ce sont eux
+     qui perdaient systématiquement la course de migrations knex au
+     boot (MigrationLocked). Actions exactes :
+     ```bash
+     cd ~/work/backstage-app
+     grep -n "signals\|mcp-actions\|kubernetes" packages/backend/src/index.ts
+     # supprimer les lignes trouvées :
+     #   backend.add(import('@backstage/plugin-signals-backend'));
+     #   backend.add(import('@backstage/plugin-mcp-actions-backend'));
+     #   backend.add(import('@backstage/plugin-kubernetes-backend'));
+     git add packages/backend/src/index.ts
+     git commit -m "fix: retrait signals/mcp-actions (course de migrations) et kubernetes (non configure)"
+     git push
+     # rebuild : kubectl create -f platform-repo/runbooks/run-backstage-build.yaml
+     # nouveau SHA → apps/backstage.yaml (image.tag) → commit/push → reset ns
+     ```
+     Vérification au boot : la ligne `Plugin initialization started`
+     ne doit plus lister ni signals ni mcp-actions ;
+   - `app-config.production.yaml` : DB par env vars, integrations.gitea,
+     backend.auth.externalAccess (keys est déprécié), auth guest
+     `dangerouslyAllowOutsideDevelopment: true` (dette de lab → OIDC) ;
+   - validation locale `yarn tsc && yarn build:backend`, puis push vers
+     Gitea (repo créé via l'UI, sans auto-init).
+3. **Pipeline dédié `build-backstage`** (le "host build" officiel) :
+   - task `backstage-host-build` : image **node:22-bookworm** (bug
+     undici/node-gyp sous node 20 : `markAsUncloneable is not a
+     function` au configure des modules natifs), toolchain
+     `apt-get install python3 g++ build-essential` (isolated-vm,
+     better-sqlite3), computeResources 2-4 CPU / 3-5 Gi, dump des
+     /tmp/xfs-*/build.log en cas d'échec ;
+   - kaniko sur `packages/backend/Dockerfile` (celui de create-app) ;
+   - PipelineRun de lancement dans `runbooks/` (hors path Argo),
+     **timeout 2h** (la compilation des natifs est longue), workspace
+     8Gi, lancé par **kubectl create** (generateName ≠ apply).
+4. **Application backstage** (chart officiel, image à nous) :
+   - image harbor.apps.../apps/backstage-app:<SHA> (jamais latest),
+     imagePullSecrets harbor-pull ;
+   - args `--config app-config.yaml --config app-config.production.yaml` ;
+   - **3 probes sur le endpoint readiness** (startup failureThreshold 60,
+     liveness aussi sur readiness) : Backstage ne retry JAMAIS son init —
+     un boot raté doit être tué et relancé par le kubelet ;
+   - strategy **Recreate** (jamais 2 générations en migration) : patch
+     manuel protégé par `ignoreDifferences: /spec/strategy` (au niveau
+     spec de l'Application, PAS dans syncPolicy) + syncOption
+     `RespectIgnoreDifferences=true` ;
+   - postgresql.enabled: false (CNPG, pas le sous-chart Bitnami).
+5. **Catalogue** : repo `idp-catalog` — catalog-info.yaml (Location
+   racine) → platform.yaml (System idp-platform + composants argocd/
+   harbor/gitea/vault avec liens) + demo-app.yaml.
+6. **Portail accessible** : https://backstage.apps.itssolutions.me ✅
+
+### Reste à faire (Phase 4)
+- [ ] **Golden path** : idp-catalog/templates/new-microservice/
+      (template.yaml + skeleton/ + skeleton-config/) — validation finale :
+      Create "hello-idp" → 2 repos → build auto →
+      https://hello-idp.apps.itssolutions.me
+- [ ] harbor-pull en ExternalSecret ; bump auto du tag backstage
+      (étendre gitops-bump) ; auth guest → OIDC
+
+---
+
+## Runbook express (les réflexes)
+
+| Symptôme | Réflexe |
+|---|---|
+| ESO InvalidProviderConfig / secrets qui ne syncent plus | `vault status` → **unseal** (vault-0 redémarre TOUJOURS sealed) |
+| 403 permission denied sur le CLI vault | session perdue (restart pod) → wrapper `vput` avec VAULT_TOKEN inline |
+| Pod bloqué ContainerCreating + Multi-Attach error | l'ancien pod tient le PVC RWO → delete l'ancien pod |
+| Backstage 0/1 avec liveness 200 / readiness 503 | plugins morts au boot → delete pod (JAMAIS rollout restart sous selfHeal) |
+| MigrationLocked au boot Backstage | 2 générations en migration → un seul pod (Recreate) + pg_terminate des sessions backstage |
+| Deployment figé avec 2 ReplicaSets | rolling bloqué → trouver ce qui empêche le Ready ou delete l'ancien pod |
+| kubectl connection refused :6443 | control plane down → SSH master, `crictl ps -a`, patience (boot storm), `systemctl restart kubelet` |
+| Push Harbor UNAUTHORIZED avec credentials valides | kaniko ne lit que `config.json` → ExternalSecret template Opaque clé config.json |
+| Webhook reçu mais aucun PipelineRun | logs el-github-listener : interceptor/template/CEL — et vérifier la branche (main) |
+
+## Leçons d'architecture (payées cash)
+
+1. **apply vs create** : état désiré nommé et réconciliable = apply (via
+   Argo) ; événement à generateName = create (PipelineRuns dans runbooks/,
+   hors des paths Argo).
+2. **RWO + RollingUpdate = deadlock Multi-Attach** : tout Deployment
+   mono-réplica à PVC passe en strategy Recreate (Backstage,
+   harbor-jobservice…).
+3. **ignoreDifferences ne protège qu'en lecture** — ajouter
+   `RespectIgnoreDifferences=true` aux syncOptions pour que les patchs
+   manuels survivent aux syncs. Et il vit au niveau spec, pas dans
+   syncPolicy.
+4. **Simples quotes** pour tout secret contenant `$` (robot$apps+ci —
+   les doubles quotes mangent la variable).
+5. **Nuage gris Cloudflare** pour les IP privées, et une seule source de
+   vérité DNS (le split-DNS divergent a coûté une soirée de TLS errors).
+6. **Les sous-charts Bitnami sont morts** (images retirées de Docker
+   Hub) : `postgresql.enabled: false` partout, un opérateur (CNPG) à la
+   place.
+7. **Snapshots Proxmox avant/après chaque phase** — etcd a survécu à un
+   crash du master par chance, pas par design.
+8. **Le master doit porter le taint NoSchedule** — un build de 4 CPU
+   schedulé dessus peut coucher etcd (vérifier :
+   `kubectl describe node master... | grep Taints`).
+9. **Une image "démo" upstream n'est pas un produit** : lire la doc de
+   déploiement AVANT d'adopter une image (les 51 restarts de Backstage).
+10. **Le monitoring (Phase 5) n'est pas du confort** : les alertes
+    vault-sealed / restarts / 2-ReplicaSets auraient économisé des heures
+    sur chaque incident de ce projet.
+
+## Phases suivantes
+
+- **Phase 5 — Observabilité & policies** : kube-prometheus-stack + Loki,
+  alerting (vault sealed, restarts, certificats, ReplicaSets doublés),
+  Kyverno, pruning Tekton (runs terminés + PVCs orphelins).
+- **Phase 6 — Résilience & self-service** : Velero (backups — PVC Gitea
+  en priorité absolue), Crossplane (provisioning self-service depuis les
+  templates Backstage), OIDC (Keycloak/Dex) pour Backstage et Argo CD.
