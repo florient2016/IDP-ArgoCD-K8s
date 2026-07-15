@@ -21,7 +21,7 @@ spec:
           image:
             registry: harbor.apps.itssolutions.me
             repository: apps/backstage-app
-            tag: "<SHA_DU_BUILD>"          # ex: 3fa9c21b — jamais latest
+            tag: "5d8c34f1"          # ex: 3fa9c21b — jamais latest
           extraEnvVars:
             - name: POSTGRES_HOST
               value: backstage-db-rw
