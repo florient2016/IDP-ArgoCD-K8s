@@ -1,0 +1,23 @@
+# PipelineRun de lancement du build backstage — HORS du path Argo
+# (generateName est incompatible avec apply/sync).
+# Lancement : kubectl create -f runbooks/run-backstage-build.yaml
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: build-backstage-manual-
+  namespace: ci
+spec:
+  pipelineRef: {name: build-backstage}
+  taskRunTemplate:
+    serviceAccountName: pipeline-sa
+  timeouts:
+    pipeline: 2h            # la compilation des natifs (isolated-vm) est LONGUE
+  workspaces:
+    - name: sources
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: [ReadWriteOnce]
+          resources: {requests: {storage: 8Gi}}
+    - name: docker-credentials
+      secret: {secretName: harbor-robot-docker}

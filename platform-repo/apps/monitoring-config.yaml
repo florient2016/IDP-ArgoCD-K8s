@@ -13,10 +13,10 @@ spec:
   project: default
   sources:
     - repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
-      targetRevision: master
+      targetRevision: main
       path: platform-repo/config/monitoring
     - repoURL: https://github.com/florient2016/IDP-ArgoCD-K8s.git
-      targetRevision: master
+      targetRevision: main
       path: platform-repo/config/kyverno
   destination:
     server: https://kubernetes.default.svc

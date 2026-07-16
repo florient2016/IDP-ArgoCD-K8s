@@ -47,7 +47,7 @@ spec:
           # config par défaut = alertes visibles dans l'UI Alertmanager.
         # ── Grafana ──
         grafana:
-          adminPassword: password1234   # TODO ExternalSecret (voir README)
+          adminPassword: "password1234"   # TODO ExternalSecret (voir README)
           ingress:
             enabled: true
             ingressClassName: nginx
