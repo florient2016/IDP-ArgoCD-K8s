@@ -154,3 +154,19 @@ vput kv put secret/backstage \
 
 # vérification :
 vput kv get secret/backstage
+
+# 1. Désactiver l'auto-sync (automated inclut prune + selfHeal) :
+kubectl -n argocd patch application app-hello-idp --type merge \
+  -p '{"spec":{"syncPolicy":{"automated":null}}}'
+
+# 2. À partir de là, plus aucune réconciliation auto — tes kubectl edit survivent.
+#    Pour synchroniser MANUELLEMENT quand tu le décides :
+kubectl -n argocd annotate application app-hello-idp \
+  argocd.argoproj.io/refresh=hard --overwrite# 
+kubectl -n argocd patch application app-hello-idp --type merge \
+  -p '{"spec":{"syncPolicy":{"automated":null}}}'
+
+# 2. À partir de là, plus aucune réconciliation auto — tes kubectl edit survivent.
+#    Pour synchroniser MANUELLEMENT quand tu le décides :
+kubectl -n argocd annotate application app-hello-idp \
+  argocd.argoproj.io/refresh=hard --overwrite
