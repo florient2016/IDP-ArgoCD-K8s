@@ -1,0 +1,79 @@
+# kube-prometheus-stack : Prometheus + Alertmanager + Grafana + exporters.
+# Le socle d'observabilité. Grafana derrière l'ingress, datasources
+# Prometheus ET Loki préconfigurées.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 65.*
+    helm:
+      valuesObject:
+        # ── Prometheus ──
+        prometheus:
+          prometheusSpec:
+            retention: 15d
+            # découvre AUTOMATIQUEMENT les PrometheusRule/ServiceMonitor
+            # de tous les namespaces (pas seulement ceux du chart) :
+            ruleSelectorNilUsesHelmValues: false
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: longhorn
+                  accessModes: [ReadWriteOnce]
+                  resources: {requests: {storage: 20Gi}}
+            resources:
+              requests: {cpu: 200m, memory: 1Gi}
+              limits: {memory: 2Gi}
+        # ── Alertmanager ──
+        alertmanager:
+          alertmanagerSpec:
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: longhorn
+                  accessModes: [ReadWriteOnce]
+                  resources: {requests: {storage: 2Gi}}
+          # Destinataire à configurer (Slack/email/webhook) — voir README.
+          # config par défaut = alertes visibles dans l'UI Alertmanager.
+        # ── Grafana ──
+        grafana:
+          adminPassword: password1234   # TODO ExternalSecret (voir README)
+          ingress:
+            enabled: true
+            ingressClassName: nginx
+            hosts: [grafana.apps.itssolutions.me]
+            tls:
+              - secretName: wildcard-apps-tls
+                hosts: [grafana.apps.itssolutions.me]
+          persistence:
+            enabled: true
+            storageClassName: longhorn
+            size: 2Gi
+          # datasource Loki ajoutée en plus de Prometheus (auto) :
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              url: http://loki-gateway.monitoring.svc.cluster.local
+              access: proxy
+        # allègements pour un cluster de lab :
+        kubeEtcd: {enabled: true}
+        kubeControllerManager: {enabled: true}
+        kubeScheduler: {enabled: true}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true      # CRDs Prometheus volumineuses

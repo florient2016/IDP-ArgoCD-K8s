@@ -1,0 +1,85 @@
+# Loki (logs) en mode single-binary + Promtail (collecteur).
+# Léger, adapté au lab. Les logs interrogeables dans Grafana (datasource
+# Loki déjà branchée par le chart prometheus ci-dessus).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: loki
+    targetRevision: 6.*
+    helm:
+      valuesObject:
+        deploymentMode: SingleBinary
+        loki:
+          auth_enabled: false
+          commonConfig: {replication_factor: 1}
+          storage: {type: filesystem}
+          schemaConfig:
+            configs:
+              - from: "2024-01-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index: {prefix: index_, period: 24h}
+          limits_config:
+            retention_period: 168h   # 7 jours
+        singleBinary:
+          replicas: 1
+          persistence:
+            enabled: true
+            storageClass: longhorn
+            size: 10Gi
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+        # désactiver les composants microservices (mode single-binary) :
+        backend: {replicas: 0}
+        read: {replicas: 0}
+        write: {replicas: 0}
+        chunksCache: {enabled: false}
+        resultsCache: {enabled: false}
+        gateway:
+          enabled: true
+          replicas: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]
+---
+# Promtail : ramasse les logs de tous les pods et les pousse vers Loki.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: promtail
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: promtail
+    targetRevision: 6.*
+    helm:
+      valuesObject:
+        config:
+          clients:
+            - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+        resources:
+          requests: {cpu: 50m, memory: 128Mi}
+          limits: {memory: 256Mi}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]

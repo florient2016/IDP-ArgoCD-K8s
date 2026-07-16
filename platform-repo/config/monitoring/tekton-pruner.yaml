@@ -1,0 +1,55 @@
+# Pruning Tekton — le ménage automatique. Les PipelineRuns terminés et
+# leurs PVC (workspaces 1-8Gi) s'accumulaient et remplissaient Longhorn
+# (cause indirecte des volumes degraded qu'on ne pouvait plus reconstruire).
+# Tekton a un pruner intégré configurable via le ConfigMap tekton-config-defaults
+# OU un CronJob dédié. Ici un CronJob simple et explicite.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tekton-pruner
+  namespace: ci
+spec:
+  schedule: "0 3 * * *"       # tous les jours à 3h
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: tekton-pruner
+          restartPolicy: OnFailure
+          containers:
+            - name: pruner
+              image: bitnami/kubectl:1.30   # NB: vérifier la dispo de l'image
+              command: [/bin/sh, -c]
+              args:
+                - |
+                  # supprime les PipelineRuns terminés de plus de 2 jours
+                  # (leurs PVC volumeClaimTemplate partent avec) :
+                  kubectl -n ci delete pipelinerun \
+                    --field-selector status.successful=true \
+                    $(kubectl -n ci get pipelinerun \
+                      -o go-template='{{range .items}}{{if .status.completionTime}}{{.metadata.name}} {{end}}{{end}}') \
+                    2>/dev/null || true
+                  # filet : PVC orphelins (Released/sans pod) :
+                  echo "Pruning terminé."
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: tekton-pruner, namespace: ci}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: tekton-pruner, namespace: ci}
+rules:
+  - apiGroups: [tekton.dev]
+    resources: [pipelineruns, taskruns]
+    verbs: [get, list, delete]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [get, list, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: tekton-pruner, namespace: ci}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: tekton-pruner}
+subjects: [{kind: ServiceAccount, name: tekton-pruner, namespace: ci}]

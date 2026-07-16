@@ -1,0 +1,106 @@
+# Règles d'alerte SUR-MESURE — chacune correspond à un incident VÉCU sur
+# cette plateforme. C'est le retour d'expérience transformé en garde-fou.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: idp-custom-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack   # pour que Prometheus la charge
+spec:
+  groups:
+    - name: idp.storage
+      rules:
+        # Longhorn degraded — LE mal de fin de projet (DB qui redémarrent,
+        # Gitea qui rame). On veut le savoir AVANT que ça cascade.
+        - alert: LonghornVolumeDegraded
+          expr: longhorn_volume_robustness == 2   # 0=unknown 1=healthy 2=degraded 3=faulted
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "Volume Longhorn dégradé: {{ $labels.volume }}"
+            description: "Réplique manquante depuis 10 min — risque de perte de données si le nœud tombe. Vérifier l'espace disque et le rebuild."
+        - alert: LonghornVolumeFaulted
+          expr: longhorn_volume_robustness == 3
+          for: 1m
+          labels: {severity: critical}
+          annotations:
+            summary: "Volume Longhorn FAULTED: {{ $labels.volume }}"
+            description: "Volume hors service — données inaccessibles."
+        - alert: LonghornNodeStorageFull
+          expr: (longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes) > 0.85
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: "Disque Longhorn > 85% sur {{ $labels.node }}"
+            description: "Plus assez d'espace pour reconstruire les répliques — les degraded ne se répareront pas."
+
+    - name: idp.vault
+      rules:
+        # Vault sealed — le réflexe #1 de tout le projet, enfin alerté.
+        - alert: VaultSealed
+          expr: vault_core_unsealed == 0
+          for: 2m
+          labels: {severity: critical}
+          annotations:
+            summary: "Vault est SEALED"
+            description: "vault-0 scellé (souvent après un restart de pod). Les ExternalSecrets ne se synchronisent plus. Action: vault operator unseal."
+        # nécessite le telemetry Prometheus de Vault activé (voir README).
+
+    - name: idp.workloads
+      rules:
+        # Pod qui redémarre en boucle — Backstage zombie, Harbor jobservice...
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 3
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "Pod en CrashLoop: {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Plus de 3 redémarrages en 15 min."
+        # Deux ReplicaSets actifs > 20 min = rolling bloqué (le piège RWO).
+        - alert: DeploymentStuckRollout
+          expr: |
+            kube_deployment_status_replicas_unavailable > 0
+            and on(namespace, deployment)
+            (time() - kube_deployment_status_observed_generation > 0)
+          for: 20m
+          labels: {severity: warning}
+          annotations:
+            summary: "Rollout bloqué: {{ $labels.namespace }}/{{ $labels.deployment }}"
+            description: "Réplicas indisponibles depuis 20 min — souvent un deadlock RWO+RollingUpdate (mettre strategy Recreate)."
+        - alert: PodImagePullError
+          expr: kube_pod_container_status_waiting_reason{reason="ImagePullBackOff"} == 1
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "ImagePullBackOff: {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Image introuvable (tag inexistant ?) ou pull secret manquant."
+
+    - name: idp.controlplane
+      rules:
+        # Le master a crashé pendant un build — surveiller sa santé.
+        - alert: KubeNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels: {severity: critical}
+          annotations:
+            summary: "Nœud NotReady: {{ $labels.node }}"
+            description: "Un nœud (master ?) ne répond plus."
+        - alert: NodeMemoryPressure
+          expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: "RAM > 90% sur {{ $labels.instance }}"
+            description: "Pression mémoire — risque d'éviction/OOM (le crash du master venait de là)."
+
+    - name: idp.certificates
+      rules:
+        # cert-manager : un cert wildcard qui expire casse TOUT l'ingress TLS.
+        - alert: CertificateExpiringSoon
+          expr: (certmanager_certificate_expiration_timestamp_seconds - time()) < (14 * 24 * 3600)
+          for: 1h
+          labels: {severity: warning}
+          annotations:
+            summary: "Certificat expire bientôt: {{ $labels.name }}"
+            description: "Moins de 14 jours — vérifier le renouvellement cert-manager/Cloudflare."

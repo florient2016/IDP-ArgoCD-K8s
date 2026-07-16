@@ -1,0 +1,100 @@
+# Policies Kyverno — les leçons du projet transformées en garde-fous
+# automatiques. TOUTES en mode Audit d'abord (validationFailureAction:
+# Audit) : elles rapportent les violations sans bloquer. Passer en Enforce
+# une par une, après vérification via `kubectl get polr -A`.
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Requiert requests/limits
+    policies.kyverno.io/description: >-
+      Un pod sans limits peut saturer un nœud (le build backstage a
+      contribué à coucher le master). On exige au moins des requests.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-resources
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, monitoring, longhorn-system]
+      validate:
+        message: "Les conteneurs doivent définir resources.requests (cpu/memory)."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    memory: "?*"
+                    cpu: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Interdit le tag latest
+    policies.kyverno.io/description: >-
+      L'image latest a coûté cher (Backstage démo). On impose des tags
+      explicites (SHA) pour la traçabilité et la reproductibilité.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, monitoring, longhorn-system, kyverno]
+      validate:
+        message: "Interdit d'utiliser le tag ':latest' ou une image sans tag."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-app-label
+  annotations:
+    policies.kyverno.io/title: Requiert un label app
+    policies.kyverno.io/description: >-
+      Un label commun facilite les sélecteurs, le debug et les dashboards.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-app-label
+      match:
+        any:
+          - resources:
+              kinds: [Deployment, StatefulSet]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, monitoring, longhorn-system, kyverno, argocd]
+      validate:
+        message: "Deployment/StatefulSet doit porter un label app.kubernetes.io/name (ou app)."
+        anyPattern:
+          - spec:
+              template:
+                metadata:
+                  labels:
+                    app.kubernetes.io/name: "?*"
+          - spec:
+              template:
+                metadata:
+                  labels:
+                    app: "?*"

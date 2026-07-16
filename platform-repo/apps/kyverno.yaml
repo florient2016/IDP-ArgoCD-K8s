@@ -1,0 +1,31 @@
+# Kyverno — moteur de policies (validation/mutation des ressources).
+# On commence en mode Audit (rapporte sans bloquer) pour ne rien casser,
+# puis Enforce quand les policies sont éprouvées.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  project: default
+  source:
+    repoURL: https://kyverno.github.io/kyverno
+    chart: kyverno
+    targetRevision: 3.*
+    helm:
+      valuesObject:
+        admissionController:
+          replicas: 1        # lab (3 en prod pour la HA)
+        backgroundController:
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
