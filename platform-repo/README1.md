@@ -170,3 +170,10 @@ kubectl -n argocd patch application app-hello-idp --type merge \
 #    Pour synchroniser MANUELLEMENT quand tu le décides :
 kubectl -n argocd annotate application app-hello-idp \
   argocd.argoproj.io/refresh=hard --overwrite
+
+# 1. Terminer l'opération en cours (sans toucher aux ressources) :
+kubectl -n argocd patch application kube-prometheus-stack --type json \
+  -p '[{"op":"remove","path":"/operation"}]'
+
+# 2. Relancer — l'automated repart aussitôt, aidé d'un refresh :
+kubectl -n argocd annotate application kube-prometheus-stack argocd.argoproj.io/refresh=hard --overwrite
