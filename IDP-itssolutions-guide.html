@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDP itssolutions — Guide de déploiement</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --ink:#e6edf3;
+    --mut:#8b949e; --line:#30363d; --acc:#39d0d8; --acc2:#f0a500;
+    --ok:#3fb950; --warn:#f0a500; --crit:#f85149; --code:#0a0e14;
+    --mono:'SFMono-Regular',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.6;font-size:15px}
+  a{color:var(--acc);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* Layout */
+  .wrap{display:flex;min-height:100vh}
+  nav.side{width:290px;flex:0 0 290px;background:var(--panel);
+    border-right:1px solid var(--line);position:sticky;top:0;height:100vh;
+    overflow-y:auto;padding:0}
+  main{flex:1;min-width:0;max-width:900px;margin:0 auto;padding:0 44px 120px}
+
+  /* Sidebar */
+  .brand{padding:22px 22px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;
+    background:var(--panel);z-index:2}
+  .brand .logo{font-family:var(--mono);font-weight:700;font-size:15px;color:var(--acc);
+    letter-spacing:.5px}
+  .brand .logo::before{content:"▚ ";color:var(--acc2)}
+  .brand .sub{color:var(--mut);font-size:12px;margin-top:4px;font-family:var(--mono)}
+  nav.side ol{list-style:none;margin:0;padding:10px 0 40px;counter-reset:s}
+  nav.side li a{display:block;padding:7px 22px 7px 22px;color:var(--mut);font-size:13.5px;
+    border-left:2px solid transparent}
+  nav.side li a:hover{color:var(--ink);background:var(--panel2);text-decoration:none}
+  nav.side li a .n{font-family:var(--mono);color:var(--acc2);font-size:11px;
+    display:inline-block;width:26px}
+  nav.side li a.grp{color:var(--ink);font-weight:600;margin-top:8px;font-size:12px;
+    text-transform:uppercase;letter-spacing:.6px;pointer-events:none;padding-bottom:2px}
+
+  /* Hero */
+  header.hero{padding:70px 0 44px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .kicker{font-family:var(--mono);color:var(--acc);font-size:12.5px;letter-spacing:2px;
+    text-transform:uppercase;margin-bottom:18px}
+  h1{font-size:40px;line-height:1.1;margin:0 0 18px;font-weight:800;letter-spacing:-.5px}
+  h1 .g{background:linear-gradient(100deg,var(--acc),var(--acc2));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .lead{color:var(--mut);font-size:17px;max-width:66ch}
+  .flowbox{margin:30px 0 4px;background:var(--code);border:1px solid var(--line);
+    border-radius:10px;padding:20px 22px;font-family:var(--mono);font-size:12.5px;
+    color:var(--mut);overflow-x:auto;white-space:pre;line-height:1.7}
+  .flowbox b{color:var(--acc)} .flowbox i{color:var(--acc2);font-style:normal}
+
+  /* Sections */
+  section{padding:52px 0 8px;border-bottom:1px solid var(--line)}
+  section:last-child{border-bottom:none}
+  .eyebrow{font-family:var(--mono);color:var(--acc2);font-size:12px;letter-spacing:1.5px;
+    text-transform:uppercase;margin-bottom:10px}
+  h2{font-size:27px;margin:0 0 8px;font-weight:750;letter-spacing:-.3px}
+  h3{font-size:18px;margin:30px 0 10px;font-weight:650;color:var(--ink)}
+  h4{font-size:14px;margin:22px 0 8px;font-weight:650;color:var(--acc);
+    font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px}
+  p{margin:12px 0}
+  .obj{color:var(--mut);font-style:italic;border-left:2px solid var(--acc);
+    padding-left:14px;margin:14px 0}
+
+  /* Code */
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;
+    padding:16px 18px;overflow-x:auto;margin:14px 0;font-family:var(--mono);
+    font-size:13px;line-height:1.65}
+  pre .c{color:#6a7681} /* comment */
+  pre .k{color:var(--acc)} /* keyword/cmd */
+  pre .s{color:#a5d6a4} /* string */
+  pre .v{color:var(--acc2)} /* var */
+  code{font-family:var(--mono);background:var(--panel2);padding:1.5px 6px;
+    border-radius:4px;font-size:12.5px;color:var(--acc)}
+  pre code{background:none;padding:0;color:inherit}
+
+  /* Callouts */
+  .box{border-radius:8px;padding:14px 16px 14px 18px;margin:16px 0;
+    border-left:3px solid var(--line);background:var(--panel)}
+  .box .t{font-weight:650;font-size:13px;margin-bottom:4px;font-family:var(--mono);
+    text-transform:uppercase;letter-spacing:.5px}
+  .box.warn{border-left-color:var(--warn)} .box.warn .t{color:var(--warn)}
+  .box.crit{border-left-color:var(--crit)} .box.crit .t{color:var(--crit)}
+  .box.ok{border-left-color:var(--ok)} .box.ok .t{color:var(--ok)}
+  .box.info{border-left-color:var(--acc)} .box.info .t{color:var(--acc)}
+  .box p{margin:6px 0}
+
+  /* Tables */
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);
+    vertical-align:top}
+  th{color:var(--acc);font-family:var(--mono);font-size:12px;text-transform:uppercase;
+    letter-spacing:.5px;font-weight:600}
+  tbody tr:hover{background:var(--panel)}
+  td code{font-size:12px}
+
+  /* Steps */
+  ol.steps{counter-reset:st;list-style:none;padding:0;margin:16px 0}
+  ol.steps>li{counter-increment:st;position:relative;padding:0 0 4px 42px;margin:0 0 20px}
+  ol.steps>li::before{content:counter(st);position:absolute;left:0;top:-2px;
+    width:28px;height:28px;background:var(--panel2);border:1px solid var(--acc);
+    color:var(--acc);border-radius:7px;font-family:var(--mono);font-weight:700;
+    font-size:13px;display:flex;align-items:center;justify-content:center}
+
+  ul.clean{list-style:none;padding:0;margin:12px 0}
+  ul.clean>li{padding:4px 0 4px 22px;position:relative}
+  ul.clean>li::before{content:"▸";position:absolute;left:2px;color:var(--acc2)}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 9px;
+    border-radius:20px;border:1px solid var(--line);color:var(--mut);margin-left:8px;
+    vertical-align:middle}
+  .pill.done{color:var(--ok);border-color:var(--ok)}
+  .pill.wip{color:var(--warn);border-color:var(--warn)}
+  .pill.todo{color:var(--mut)}
+
+  footer{color:var(--mut);font-size:12.5px;font-family:var(--mono);padding:40px 0 10px;
+    text-align:center}
+
+  @media(max-width:880px){
+    nav.side{display:none} main{padding:0 20px 80px}
+    h1{font-size:30px}
+  }
+  /* print */
+  @media print{
+    nav.side{display:none} main{max-width:none}
+    section{break-inside:avoid} pre{white-space:pre-wrap}
+    body{background:#fff;color:#111}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="side">
+  <div class="brand">
+    <div class="logo">IDP itssolutions</div>
+    <div class="sub">deployment guide · v1</div>
+  </div>
+  <ol>
+    <li><a class="grp">Le projet</a></li>
+    <li><a href="#intro"><span class="n">00</span>Vue d'ensemble</a></li>
+    <li><a href="#prereq"><span class="n">—</span>Prérequis cluster</a></li>
+    <li><a class="grp">Construction</a></li>
+    <li><a href="#p0"><span class="n">0</span>Fondations</a></li>
+    <li><a href="#p1"><span class="n">1</span>GitOps · Argo CD</a></li>
+    <li><a href="#p2"><span class="n">2</span>Secrets · Vault</a></li>
+    <li><a href="#p3"><span class="n">3</span>Registre · CI</a></li>
+    <li><a href="#p35"><span class="n">3.5</span>Forge · Gitea</a></li>
+    <li><a href="#p4"><span class="n">4</span>Portail · Backstage</a></li>
+    <li><a href="#p5"><span class="n">5</span>Observabilité</a></li>
+    <li><a href="#p6"><span class="n">6</span>Résilience · SSO</a></li>
+    <li><a class="grp">Exploitation</a></li>
+    <li><a href="#disk"><span class="n">△</span>La saga du disque</a></li>
+    <li><a href="#runbook"><span class="n">▤</span>Runbook</a></li>
+    <li><a href="#lessons"><span class="n">✦</span>Leçons</a></li>
+    <li><a href="#state"><span class="n">◈</span>État & TODO</a></li>
+  </ol>
+</nav>
+<main>
+
+<header class="hero" id="intro">
+  <div class="kicker">Internal Developer Platform · self-hosted</div>
+  <h1>De <span class="g">git push</span> à la production,<br>sans une commande kubectl.</h1>
+  <p class="lead">Guide de déploiement complet d'une plateforme développeur souveraine,
+  100% GitOps, sur un cluster Kubernetes auto-hébergé. Reprenez-le depuis zéro sur un
+  nouveau cluster : chaque phase construit une brique, avec les commandes, les choix
+  d'architecture et les pièges déjà rencontrés.</p>
+  <div class="flowbox">Développeur ──push──▶ <b>Gitea</b> ──webhook──▶ <b>Tekton</b> ──build/push──▶ <b>Harbor</b>
+                                            │
+                                            └──bump──▶ &lt;app&gt;-config ──▶ <b>Argo CD</b> ──▶ <i>Production (TLS)</i>
+
+<b>Backstage</b> ── "Create" ──▶ scaffolder ──▶ 2 repos Gitea ──▶ (la boucle ci-dessus)
+<b>Vault</b> ──▶ External Secrets ──▶ Secrets K8s (tous les composants)</div>
+</header>
+
+<section id="prereq">
+  <div class="eyebrow">Point de départ</div>
+  <h2>Prérequis du cluster</h2>
+  <p class="obj">Ce guide part d'un cluster Kubernetes nu et le transforme en IDP
+  complète. Voici le socle supposé en place avant la Phase 0.</p>
+  <table>
+    <thead><tr><th>Élément</th><th>Valeur de référence</th></tr></thead>
+    <tbody>
+      <tr><td>Hyperviseur</td><td>Proxmox VE</td></tr>
+      <tr><td>Cluster</td><td>kubeadm — 1 master + 2 workers, Kubernetes v1.33</td></tr>
+      <tr><td>OS des nœuds</td><td>RHEL 10 (ou équivalent)</td></tr>
+      <tr><td>CNI</td><td>Calico</td></tr>
+      <tr><td>Domaine</td><td><code>*.apps.itssolutions.me</code> → 10.10.0.240</td></tr>
+      <tr><td>DNS</td><td>Cloudflare (accès API pour le solver DNS-01)</td></tr>
+      <tr><td>Stockage</td><td>Un disque dédié par worker pour Longhorn</td></tr>
+    </tbody>
+  </table>
+  <div class="box crit">
+    <div class="t">⚠ Leçon matérielle capitale</div>
+    <p>Le disque qui porte <b>etcd</b> (sur le master) conditionne la santé de TOUT le
+    cluster. Un disque lent (HDD, ou bus IDE émulé, ou stockage partagé saturé) provoque
+    des <code>etcdserver: request timed out</code> qui se propagent en cascade :
+    API server qui rate des réponses → Longhorn qui ne réconcilie plus → volumes dégradés,
+    bases qui redémarrent. <b>Prévoyez un SSD/NVMe dédié au master, sur bus VirtIO SCSI.</b>
+    Voir la section « La saga du disque ».</p>
+  </div>
+  <h4>Repo control-plane</h4>
+  <pre><span class="c"># structure du dépôt GitOps (source de vérité d'Argo)</span>
+platform-repo/
+├── apps/                 <span class="c"># Applications Argo (sync-waves 0→13)</span>
+├── config/&lt;composant&gt;/   <span class="c"># manifests par composant</span>
+└── runbooks/             <span class="c"># objets lancés par kubectl create (hors path Argo)</span></pre>
+</section>
+
+<section id="p0">
+  <div class="eyebrow">Phase 0</div>
+  <h2>Fondations <span class="pill done">déployé</span></h2>
+  <p class="obj">Rendre le cluster capable d'exposer des services avec IP et TLS valides.</p>
+  <ol class="steps">
+    <li><b>MetalLB</b> — <code>IPAddressPool</code> 10.10.0.240-250 + <code>L2Advertisement</code> (mode L2, pas de BGP).</li>
+    <li><b>ingress-nginx</b> — Service LoadBalancer (10.10.0.240), avec le flag
+      <code>--default-ssl-certificate=ingress-nginx/wildcard-apps-tls</code> : un seul
+      certificat wildcard sert tout <code>*.apps</code>, aucun secret TLS à répliquer par namespace.</li>
+    <li><b>cert-manager</b> — <code>ClusterIssuer</code> staging + prod, solver
+      <b>DNS-01 Cloudflare</b>. <code>Certificate</code> wildcard <code>*.apps.itssolutions.me</code>.</li>
+    <li><b>Longhorn</b> — 2 réplicas, disques dédiés sur les workers (scheduling désactivé sur le disque OS).</li>
+    <li><b>DNS Cloudflare</b> — enregistrements en <b>nuage GRIS</b> (DNS only ; le proxy
+      orange ne joint pas les IP privées).</li>
+    <li><b>sysctl</b> — inotify instances/watches et file-max relevés sur tous les nœuds
+      (leur épuisement corrompait des PVC).</li>
+  </ol>
+  <div class="box warn">
+    <div class="t">Piège résolu — split-DNS</div>
+    <p>Des résolutions divergentes interne/externe causaient des erreurs TLS
+    intermittentes. Solution : une seule source de vérité DNS (Cloudflare, nuage gris).</p>
+  </div>
+</section>
+
+<section id="p1">
+  <div class="eyebrow">Phase 1</div>
+  <h2>GitOps · Argo CD <span class="pill done">déployé</span></h2>
+  <p class="obj">Tout l'état du cluster décrit dans Git, réconcilié automatiquement.</p>
+  <ol class="steps">
+    <li>Installer Argo CD (<code>server.insecure: true</code> derrière nginx qui termine le TLS).</li>
+    <li><b>Pattern app-of-apps</b> — <code>bootstrap/root-app.yaml</code> (appliqué une seule
+      fois à la main) pointe <code>platform-repo/apps/</code>. Tout fichier ajouté est déployé,
+      ordonné par <b>sync-waves</b> (0 → 13).</li>
+    <li>Règle de vie du projet : toute modification passe par commit + push.</li>
+  </ol>
+  <pre><span class="c"># accélérer la prise en compte d'un changement</span>
+<span class="k">kubectl</span> -n argocd annotate application <span class="v">&lt;x&gt;</span> argocd.argoproj.io/refresh=hard --overwrite</pre>
+</section>
+
+<section id="p2">
+  <div class="eyebrow">Phase 2</div>
+  <h2>Secrets · Vault + External Secrets <span class="pill done">déployé</span></h2>
+  <p class="obj">Aucun secret en clair dans Git ; une source unique.</p>
+  <ol class="steps">
+    <li><b>Vault</b> standalone Raft (PVC Longhorn, namespace <code>vault-itssolutions</code>),
+      init + unseal scriptés. <b>Clés de unseal sauvegardées hors cluster</b> (perte = réinitialisation).</li>
+    <li><b>External Secrets Operator</b> + <code>ClusterSecretStore</code> <code>vault</code>
+      (auth Kubernetes, policy de lecture <code>secret/data/*</code>).</li>
+    <li><b>Pattern uniforme</b> pour tout le projet : le secret dans Vault → un
+      <code>ExternalSecret</code> dans le namespace consommateur → un Secret K8s synchronisé.</li>
+  </ol>
+  <h4>Wrapper de session Vault</h4>
+  <pre><span class="c"># vault-0 perd sa session à chaque restart ET revient TOUJOURS sealed</span>
+<span class="k">read</span> -s VROOT   <span class="c"># root token (saisie masquée)</span>
+<span class="k">vput</span>() { kubectl -n vault-itssolutions exec -i vault-0 -- sh -c <span class="s">"VAULT_TOKEN='$VROOT' vault $*"</span>; }</pre>
+  <div class="box info">
+    <div class="t">Réflexe n°1 du projet</div>
+    <p><code>ESO InvalidProviderConfig</code> / secrets qui ne synchronisent plus →
+    <code>vault status</code> → <b>unseal</b>. C'est le premier geste à tenter devant
+    la moitié des incidents.</p>
+  </div>
+</section>
+
+<section id="p3">
+  <div class="eyebrow">Phase 3</div>
+  <h2>Registre & CI · Harbor + Tekton <span class="pill done">déployé</span></h2>
+  <p class="obj">Builder et stocker les images en interne.</p>
+  <ol class="steps">
+    <li><b>Harbor</b> — PVCs Longhorn, admin via ExternalSecret. Projet <code>apps</code> privé.
+      Robot <code>robot$apps+ci</code> (push+pull) → token dans Vault.</li>
+    <li><b>Tekton</b> vendoré (pipelines, triggers, interceptors — app Argo dédiée, ServerSideApply).</li>
+    <li><b>Pipeline générique <code>build-and-promote</code></b> — trois tâches enchaînées :
+      <ul class="clean">
+        <li><code>git-clone-lite</code> : fetch + checkout FETCH_HEAD (robuste au <code>lost+found</code> d'un PVC non vide), le commit court = tag image</li>
+        <li><code>kaniko-build</code> : dockerconfig monté sous le nom <code>config.json</code></li>
+        <li><code>gitops-bump</code> : yq du tag dans le <code>values.yaml</code> du repo <code>&lt;app&gt;-config</code></li>
+      </ul></li>
+  </ol>
+  <div class="box crit">
+    <div class="t">⚠ Deux pièges qui coûtent des heures</div>
+    <p><b>Simples quotes obligatoires</b> pour tout secret contenant <code>$</code> (le
+    <code>$</code> de <code>robot$apps</code> — les doubles quotes le mangent).</p>
+    <p>Harbor <code>UNAUTHORIZED</code> malgré des credentials valides → kaniko ne lit que
+    <code>config.json</code>, <b>jamais</b> <code>.dockerconfigjson</code>. Monter le secret
+    dockerconfig sous le nom <code>config.json</code> (ExternalSecret de type Opaque).</p>
+  </div>
+</section>
+
+<section id="p35">
+  <div class="eyebrow">Phase 3.5</div>
+  <h2>Forge · Gitea + ApplicationSet <span class="pill done">déployé</span></h2>
+  <p class="obj">Héberger le code en interne, et découvrir automatiquement les applications à déployer.</p>
+  <ol class="steps">
+    <li><b>Gitea</b> — chart officiel, <b>SQLite</b> + cache memory + queues level (tous les
+      sous-charts Bitnami désactivés : images retirées de Docker Hub).</li>
+    <li>Organisation <code>itssolutions</code> + comptes de service : <code>tekton-ci</code>,
+      <code>argocd</code> (PAT avec <code>read:issue</code> — sinon 403 obscurs), <code>backstage</code>.</li>
+    <li><b>Webhook d'organisation</b> → EventListener Tekton, interceptor <b>github</b>
+      (Gitea émet des headers GitHub-compatibles ; l'interceptor "gitea" n'existe pas).</li>
+    <li><b>ApplicationSet <code>itssolutions-apps</code></b> — scmProvider gitea,
+      <code>cloneProtocol: https</code>, filtre <code>.*-config$</code> → chaque repo
+      <code>&lt;app&gt;-config</code> devient une Application Argo.</li>
+  </ol>
+  <div class="box ok">
+    <div class="t">✓ Boucle validée de bout en bout</div>
+    <p>push demo-app → webhook → build → Harbor → bump demo-app-config → Argo →
+    <code>https://demo-app.apps.itssolutions.me</code></p>
+  </div>
+</section>
+
+<section id="p4">
+  <div class="eyebrow">Phase 4</div>
+  <h2>Portail développeur · Backstage <span class="pill done">déployé</span></h2>
+  <p class="obj">Un portail où un développeur crée une application en un clic.</p>
+  <div class="box crit">
+    <div class="t">⚠ La leçon fondatrice</div>
+    <p>L'image <code>ghcr.io/backstage/backstage</code> est une <b>démo</b>, pas un produit.
+    Elle a causé <b>51 redémarrages</b> MigrationLocked sur ses plugins <code>signals</code>
+    et <code>mcp-actions</code>. La méthode supportée : générer SA propre app et builder SA
+    propre image. Et <b>create-app inclut aussi ces plugins par défaut</b> — les retirer
+    d'<code>index.ts</code> est le fix décisif.</p>
+  </div>
+  <ol class="steps">
+    <li><b>CloudNativePG</b> + Cluster <code>backstage-db</code> (PostgreSQL 17). Le rôle
+      <code>backstage</code> exige <b>CREATEDB</b> (Backstage crée une base par plugin, 12 au total).</li>
+    <li><b>backstage-app</b> généré sur le poste (Node via <b>nvm</b>, jamais le nodejs
+      <code>dnf</code> qui crashe sur RHEL) :
+      <ul class="clean">
+        <li><code>npx @backstage/create-app</code> (interactif — jamais en nohup)</li>
+        <li>ajout du module <code>plugin-scaffolder-backend-module-gitea</code></li>
+        <li><b>retrait de signals, mcp-actions, kubernetes</b> de <code>packages/backend/src/index.ts</code></li>
+      </ul></li>
+    <li><b>Pipeline dédié <code>build-backstage</code></b> — image <b>node:22-bookworm</b>
+      (bug undici/node-gyp sous node 20), toolchain <code>python3 g++ build-essential</code>,
+      <code>computeResources</code> (le champ <code>resources</code> est rejeté par le webhook
+      Tekton v1), timeout 2h, lancé par <code>kubectl create</code> (hors path Argo).</li>
+    <li><b>Application backstage</b> — image Harbor taggée SHA, <b>3 probes toutes sur le
+      endpoint readiness</b> (Backstage ne retente jamais l'init de ses plugins), strategy
+      <b>Recreate</b> + <code>ignoreDifferences: /spec/strategy</code> (au niveau spec) +
+      <code>RespectIgnoreDifferences=true</code>.</li>
+  </ol>
+  <h4>Le golden path — l'aboutissement</h4>
+  <p>Template <code>new-microservice</code> : un clic « Create » → nom → le scaffolder crée
+  2 repos Gitea → webhook → build → ApplicationSet → déploiement.</p>
+  <pre><span class="c"># validé avec hello-idp — une app en prod, née d'un clic</span>
+<span class="k">curl</span> https://hello-idp.apps.itssolutions.me
+<span class="s">&lt;h1&gt;hello-idp - IDP itssolutions&lt;/h1&gt;</span></pre>
+  <div class="box info">
+    <div class="t">Gotcha connu</div>
+    <p>Le tag <code>initial</code> du skeleton provoque un ImagePullBackOff transitoire
+    (~3 min) jusqu'au bump du pipeline. Fix durable : que le pipeline bumpe le
+    <code>values.yaml</code> dès le premier build.</p>
+  </div>
+</section>
+
+<section id="p5">
+  <div class="eyebrow">Phase 5</div>
+  <h2>Observabilité & policies <span class="pill wip">en finition</span></h2>
+  <p class="obj">Ne plus jamais diagnostiquer à l'aveugle.</p>
+  <h4>Composants</h4>
+  <ul class="clean">
+    <li><b>kube-prometheus-stack</b> — Prometheus + Alertmanager + Grafana</li>
+    <li><b>Loki + Promtail</b> — agrégation des logs (datasource Grafana)</li>
+    <li><b>Kyverno</b> — policy engine (policies en mode Audit)</li>
+    <li><b>tekton-pruner</b> — ménage auto des PipelineRuns/PVC</li>
+  </ul>
+  <h4>Alertes sur-mesure (chacune = un incident vécu)</h4>
+  <p>LonghornVolumeDegraded, LonghornNodeStorageFull, VaultSealed, PodCrashLooping,
+  DeploymentStuckRollout, ImagePullBackOff, KubeNodeNotReady, NodeMemoryPressure,
+  CertificateExpiringSoon.</p>
+  <div class="box warn">
+    <div class="t">Le grand nettoyage révélé par le monitoring</div>
+    <p>Le déploiement a mis au jour <b>six mois d'archéologie</b> invisibles : un ancien
+    kube-prom-stack (194 j) avec des node-exporters à <b>26 000+ redémarrages</b>, des KSM/
+    promtail zombies, un squelette rook-ceph, un gitlab-agent résiduel. Nettoyage →
+    crash-loopers réduits de ~10 à 4.</p>
+  </div>
+  <div class="box crit">
+    <div class="t">⚠ Piège Kyverno — verrouillage total du cluster</div>
+    <p>Le webhook <code>validate.kyverno.svc-fail</code> en <code>failurePolicy: Fail</code> :
+    quand Kyverno tombe, <b>plus aucune création de ressource n'est possible dans tout le
+    cluster</b>. Nos policies étant en Audit, ce mode Fail ne protège rien mais paralyse tout.
+    Fix : <code>webhooksFailurePolicy: Ignore</code>. Débocage d'urgence : supprimer les
+    webhookconfigurations (Kyverno les régénère).</p>
+  </div>
+</section>
+
+<section id="p6">
+  <div class="eyebrow">Phase 6</div>
+  <h2>Résilience & SSO <span class="pill wip">en cours</span></h2>
+  <h4>6a — Backups (Velero + MinIO) <span class="pill todo">reporté</span></h4>
+  <p>Bundle prêt (MinIO backend S3, Velero en file-system backup compatible Longhorn,
+  3 schedules). Reporté au profit du SSO — <b>reste la dette n°1</b> (Gitea non sauvegardé).</p>
+  <h4>6b — SSO plateforme (Dex + Gitea) <span class="pill wip">en cours</span></h4>
+  <p><b>Choix : Dex, pas Keycloak.</b> Dex est un traducteur OIDC léger (~50 Mo, stateless)
+  qui délègue l'identité à <b>Gitea</b> (connector natif). Un compte Gitea = le login unique
+  de Backstage, Argo CD, Grafana et Harbor. Chaque service garde son admin local en
+  break-glass. Migration Keycloak possible plus tard (indolore, OIDC) si besoin de MFA/LDAP.</p>
+  <table>
+    <thead><tr><th>Service</th><th>Méthode</th><th>Effort</th></tr></thead>
+    <tbody>
+      <tr><td>Argo CD</td><td>ESO Merge + <code>oidc.config</code> dans argocd-cm</td><td>20 min</td></tr>
+      <tr><td>Grafana</td><td><code>auth.generic_oauth</code> dans les values</td><td>20 min</td></tr>
+      <tr><td>Harbor</td><td>UI admin (mode d'auth runtime)</td><td>15 min</td></tr>
+      <tr><td>Backstage</td><td>provider oidc + rebuild (la boucle)</td><td>~1 h</td></tr>
+    </tbody>
+  </table>
+  <h4>6c — Crossplane <span class="pill todo">optionnel</span></h4>
+  <p>Provisioning self-service (une Composition PostgresInstance que le template Backstage
+  proposerait). Chantier futur.</p>
+</section>
+
+<section id="disk">
+  <div class="eyebrow">Diagnostic</div>
+  <h2>La saga du disque <span class="pill wip">le fil rouge</span></h2>
+  <p class="obj">Le fil rouge du projet, résolu grâce au monitoring de la Phase 5 —
+  et l'histoire la plus instructive de tout le déploiement.</p>
+  <h4>Les symptômes (des semaines d'incidents sans lien apparent)</h4>
+  <ul class="clean">
+    <li>Volumes Longhorn en <code>degraded</code> permanent, jamais reconstruits</li>
+    <li>Bases de données qui redémarrent seules ; Gitea à 12 s par requête SQL</li>
+    <li>kube-state-metrics en CrashLoop (<code>/livez got 0</code>)</li>
+    <li>Backstage / Loki qui ne deviennent jamais ready ; le master qui crashe pendant un build</li>
+  </ul>
+  <h4>La chaîne causale</h4>
+  <div class="flowbox">Disque master lent ──▶ etcd <i>"request timed out"</i> ──▶ API server rate des réponses
+        ──▶ Longhorn ne réconcilie plus ──▶ volumes degraded, attach/detach interminables
+        ──▶ DB restarts, Gitea lent, Loki jamais ready</div>
+  <p>Le dashboard Loki a montré les logs Longhorn : <code>etcdserver: request timed out</code>
+  en boucle — <b>546 000 logs en 30 minutes</b>.</p>
+  <h4>Les mesures (iostat sur le master)</h4>
+  <table>
+    <thead><tr><th>Métrique</th><th>Mesuré</th><th>Sain</th></tr></thead>
+    <tbody>
+      <tr><td>f_await (latence fsync)</td><td>97-340 ms</td><td>&lt; 10-25 ms</td></tr>
+      <tr><td>disque %util</td><td>84-100 %</td><td>&lt; 70 %</td></tr>
+      <tr><td>IOPS à saturation</td><td>~25 (HDD-class)</td><td>—</td></tr>
+      <tr><td>CPU steal</td><td>0.3-0.8 %</td><td>OK (pas de surallocation)</td></tr>
+      <tr><td>CPU idle</td><td>~76 %</td><td>12 cœurs qui attendent le disque</td></tr>
+    </tbody>
+  </table>
+  <h4>Le traitement</h4>
+  <ol class="steps">
+    <li><span class="pill done">fait</span> Taint <code>NoSchedule</code> du master vérifié.</li>
+    <li><span class="pill done">fait</span> Conversion du bus disque master <b>IDE → VirtIO SCSI</b>
+      (dracut virtio, snapshot, reattach scsi0, boot order).</li>
+    <li><span class="pill wip">constat</span> <b>La conversion SCSI n'a pas suffi</b> —
+      f_await reste 150-340 ms. Le bus n'était pas la seule cause : le <b>disque physique</b>
+      (qcow2 sur le stockage <code>local</code> de Proxmox) est le vrai goulot, probablement un HDD.</li>
+    <li><span class="pill todo">à faire</span> Vérifier sur l'HÔTE Proxmox :
+      <pre><span class="k">lsblk</span> -d -o NAME,ROTA,SIZE,MODEL   <span class="c"># ROTA=1 = HDD → cause de fond</span></pre>
+      Fix : SSD/NVMe dédié au disque master. Atténuation en attendant :
+      <code>--heartbeat-interval=500 --election-timeout=5000</code> dans les extraArgs d'etcd.</li>
+  </ol>
+</section>
+
+<section id="runbook">
+  <div class="eyebrow">Exploitation</div>
+  <h2>Runbook — les réflexes</h2>
+  <p class="obj">Le tableau à garder sous la main : chaque ligne a été acquise dans la douleur.</p>
+  <table>
+    <thead><tr><th>Symptôme</th><th>Cause probable</th><th>Geste</th></tr></thead>
+    <tbody>
+      <tr><td>ESO InvalidProviderConfig</td><td>vault-0 sealed après restart</td><td><code>vault operator unseal</code></td></tr>
+      <tr><td>Pod Multi-Attach / ContainerCreating long</td><td>ancien pod tient le PVC RWO</td><td>delete l'ancien pod</td></tr>
+      <tr><td>Backstage 0/1, liveness 200 / readiness 503</td><td>init de plugin échouée</td><td>delete pod (pas rollout restart)</td></tr>
+      <tr><td>MigrationLocked</td><td>2 générations en migration</td><td>un seul pod (Recreate) + pg_terminate</td></tr>
+      <tr><td>CREATE DATABASE permission denied</td><td>rôle sans CREATEDB</td><td>ALTER ROLE … CREATEDB</td></tr>
+      <tr><td>Harbor UNAUTHORIZED malgré creds ok</td><td>kaniko cherche config.json</td><td>dockerconfig monté en config.json</td></tr>
+      <tr><td>Toute création de ressource échoue</td><td>Kyverno down, failurePolicy Fail</td><td>delete les webhookconfigurations Kyverno</td></tr>
+      <tr><td>Volume oscille attaching/detaching</td><td>coordination Longhorn grippée (disque lent)</td><td>scale workload à 0, restart longhorn-manager</td></tr>
+      <tr><td>Volume faulted après détachement brutal</td><td>réplique mise offline par précaution</td><td>UI Longhorn → Salvage</td></tr>
+      <tr><td>kubectl → localhost:8080 refused</td><td>~/.kube/config absent</td><td>cp /etc/kubernetes/admin.conf ~/.kube/config</td></tr>
+      <tr><td>VM en emergency mode après conversion disque</td><td>ligne fstab avec UUID mort</td><td>commenter la ligne, mount -a, reboot</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="lessons">
+  <div class="eyebrow">Synthèse</div>
+  <h2>Leçons d'architecture</h2>
+  <ol class="steps">
+    <li><b>apply vs create</b> : objets à état nommé → Argo (apply) ; objets à generateName
+      (PipelineRun) → kubectl create, hors path Argo (runbooks/).</li>
+    <li><b>RWO + RollingUpdate = deadlock</b> : un volume ReadWriteOnce ne peut être tenu par
+      deux pods → strategy <b>Recreate</b> pour tout workload monobloc sur PVC RWO.</li>
+    <li><b>ignoreDifferences ne protège qu'en lecture</b> — ajouter
+      <code>RespectIgnoreDifferences=true</code> pour que le sync n'écrase pas un patch manuel.</li>
+    <li><b>Simples quotes</b> pour tout secret contenant <code>$</code>.</li>
+    <li><b>Nuage gris Cloudflare</b> pour des IP privées.</li>
+    <li><b>Les sous-charts Bitnami sont morts</b> → PostgreSQL via CloudNativePG.</li>
+    <li><b>Après un helm uninstall</b>, vérifier les objets cluster-scoped orphelins : CRDs et
+      surtout webhookconfigurations — un webhook qui pointe dans le vide empoisonne l'API.</li>
+    <li><b>Une image démo upstream n'est pas un produit</b> (Backstage).</li>
+    <li><b>Node 22 pour les builds Backstage</b> (bug undici sous node 20).</li>
+    <li><b>Snapshots Proxmox AVANT chaque opération à risque.</b></li>
+    <li><b>etcd sur disque lent = cluster ingérable</b> — un SSD/NVMe pour le master est un
+      prérequis, pas un luxe. Le monitoring transforme un incident mystérieux en un chiffre (f_await).</li>
+    <li><b>Kyverno failurePolicy: Fail = risque de verrouillage total</b> ; en Audit, préférer Ignore.</li>
+    <li><b>Le monitoring paie sa dette dès le déploiement</b> : il révèle stacks fantômes et
+      instabilité de l'API invisibles autrement.</li>
+  </ol>
+</section>
+
+<section id="state">
+  <div class="eyebrow">Aujourd'hui</div>
+  <h2>État actuel & travaux restants</h2>
+  <h4>Complété</h4>
+  <ul class="clean">
+    <li><span class="pill done">✓</span> Phases 0 à 4 : de l'infrastructure au portail, golden path validé (hello-idp en prod d'un clic)</li>
+    <li><span class="pill done">✓</span> Phase 5 déployée : Grafana/Loki/Kyverno opérationnels, root cause disque identifiée</li>
+    <li><span class="pill done">✓</span> Conversion IDE→SCSI du master, taint master vérifié</li>
+  </ul>
+  <h4>Priorité 1 — matériel (le vrai fix de fond)</h4>
+  <ul class="clean">
+    <li><code>lsblk -d -o NAME,ROTA</code> sur l'hôte Proxmox → confirmer HDD</li>
+    <li>SSD/NVMe pour le disque du master (Move Storage) → etcd sain</li>
+    <li>Convertir aussi les disques OS des workers en SCSI (un à la fois)</li>
+  </ul>
+  <h4>Priorité 2 — résilience (la dette n°1)</h4>
+  <ul class="clean">
+    <li>Récupérer Gitea (volume détaché, réplique saine sur worker1)</li>
+    <li>BACKUP Gitea hors cluster (tar de /data) — non négociable</li>
+    <li>Déployer Velero (Phase 6a)</li>
+  </ul>
+  <h4>Priorité 3 — finitions Phase 5</h4>
+  <ul class="clean">
+    <li>Node-exporters CrashLoop : déloger le squatteur du port 9100</li>
+    <li>Loki (index corrompu — se répare au wipe du PVC)</li>
+    <li>Kyverno <code>webhooksFailurePolicy: Ignore</code> (commit définitif)</li>
+    <li>Dashboards (16966 Longhorn, 15757, 13639) + ServiceMonitors + mdp Grafana en ExternalSecret</li>
+  </ul>
+  <h4>Priorité 4 — SSO (Phase 6b)</h4>
+  <ul class="clean">
+    <li>Déployer Dex + brancher Backstage, Argo CD, Grafana, Harbor</li>
+    <li>oauth2-proxy devant Longhorn (exposé sans auth !) et Prometheus</li>
+  </ul>
+  <h4>Polissage</h4>
+  <ul class="clean">
+    <li>Bump auto du tag ; URL catalogInfoUrl du template ; harbor-pull en ExternalSecret</li>
+    <li>Gitea SQLite → PostgreSQL/CNPG ; trancher le sort de gitlab-agent</li>
+  </ul>
+</section>
+
+<footer>
+  IDP itssolutions — guide de déploiement · Kubernetes / Proxmox / GitOps<br>
+  document autoportant, versionnable, imprimable (Ctrl/Cmd + P → PDF)
+</footer>
+</main>
+</div>
+</body>
+</html>

@@ -98,3 +98,12 @@ Le monitoring en place, revenir régler les dettes qu'il va RÉVÉLER :
 volumes Longhorn degraded, workloads sans limits, tag initial. Puis
 Phase 6 : Velero (backups — PVC Gitea/Vault en priorité), OIDC
 (Keycloak/Dex), Crossplane.
+
+
+## Troubleshooting
+kubectl -n argocd patch application loki --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+kubectl -n monitoring scale sts loki --replicas=0
+kubectl -n monitoring delete pvc storage-loki-0
+kubectl -n monitoring scale sts loki --replicas=1
+kubectl -n argocd patch application loki --type merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+kubectl -n monitoring get pods

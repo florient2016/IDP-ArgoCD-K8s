@@ -1,0 +1,73 @@
+# Dex — LE fournisseur d'identité de la plateforme. Source : GITEA
+# (tes comptes Gitea = le login unique de tout l'IDP).
+# Clients : Backstage, Argo CD, Grafana, Harbor.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dex
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+spec:
+  project: default
+  source:
+    repoURL: https://charts.dexidp.io
+    chart: dex
+    targetRevision: 0.19.*
+    helm:
+      valuesObject:
+        config:
+          issuer: https://dex.apps.itssolutions.me
+          storage: {type: kubernetes, config: {inCluster: true}}
+          oauth2:
+            skipApprovalScreen: true          # pas d'écran "Grant access" interne
+          connectors:
+            - type: gitea
+              id: gitea
+              name: Gitea
+              config:
+                baseURL: https://git.apps.itssolutions.me
+                clientID: $GITEA_CLIENT_ID
+                clientSecret: $GITEA_CLIENT_SECRET
+                redirectURI: https://dex.apps.itssolutions.me/callback
+          staticClients:
+            - id: backstage
+              name: Backstage
+              secretEnv: BACKSTAGE_CLIENT_SECRET
+              redirectURIs:
+                - https://backstage.apps.itssolutions.me/api/auth/oidc/handler/frame
+            - id: argocd
+              name: Argo CD
+              secretEnv: ARGOCD_CLIENT_SECRET
+              redirectURIs:
+                - https://argocd.apps.itssolutions.me/auth/callback
+            - id: grafana
+              name: Grafana
+              secretEnv: GRAFANA_CLIENT_SECRET
+              redirectURIs:
+                - https://grafana.apps.itssolutions.me/login/generic_oauth
+            - id: harbor
+              name: Harbor
+              secretEnv: HARBOR_CLIENT_SECRET
+              redirectURIs:
+                - https://harbor.apps.itssolutions.me/c/oidc/callback
+        envVars:
+          - {name: GITEA_CLIENT_ID, valueFrom: {secretKeyRef: {name: dex-secrets, key: gitea-client-id}}}
+          - {name: GITEA_CLIENT_SECRET, valueFrom: {secretKeyRef: {name: dex-secrets, key: gitea-client-secret}}}
+          - {name: BACKSTAGE_CLIENT_SECRET, valueFrom: {secretKeyRef: {name: dex-secrets, key: backstage-client-secret}}}
+          - {name: ARGOCD_CLIENT_SECRET, valueFrom: {secretKeyRef: {name: dex-secrets, key: argocd-client-secret}}}
+          - {name: GRAFANA_CLIENT_SECRET, valueFrom: {secretKeyRef: {name: dex-secrets, key: grafana-client-secret}}}
+          - {name: HARBOR_CLIENT_SECRET, valueFrom: {secretKeyRef: {name: dex-secrets, key: harbor-client-secret}}}
+        ingress:
+          enabled: true
+          className: nginx
+          hosts:
+            - host: dex.apps.itssolutions.me
+              paths: [{path: /, pathType: Prefix}]
+          tls: [{secretName: wildcard-apps-tls, hosts: [dex.apps.itssolutions.me]}]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dex
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]
